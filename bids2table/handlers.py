@@ -41,6 +41,8 @@ class Handler:
         [ ] retry logic?
         [x] rename map, in case you want to change the column names from what's in the
             file, and you don't want to customize the handler func.
+        [x] optional prefix in case you want to have multiple handlers with the same
+            prefix. On you if you get name clashes!
     """
 
     def __init__(
@@ -49,6 +51,7 @@ class Handler:
         *,
         schema: Union[Schema, Dict[str, Any]],
         name: Optional[str] = None,
+        prefix: Optional[str] = None,
         rename_map: Dict[str, str] = {},
         strict: bool = False,
     ):
@@ -56,10 +59,13 @@ class Handler:
             schema = Schema.from_dict(schema)
         if name is None:
             name = func.__name__
+        if prefix is None:
+            prefix = name
 
         self.func = func
         self.schema = schema
         self.name = name
+        self.prefix = prefix
         self.rename_map = rename_map
         self.strict = strict
 
@@ -76,6 +82,21 @@ class Handler:
                     f"\thandler: {self.name}"
                 )
             record = {self.rename_map.get(k, k): v for k, v in record.items()}
+            # TODO: for columns that can be all None in a batch, will need to do
+            # something to ensure that the correct types are set. This could happen:
+            #   - in `schema.coerce`
+            #   - in `RecordBatchTable.to_pandas` (this seems best with `df.astype`)
+            #   - somewhere else?
+            #
+            # Also have to worry about metadata columns that are all None. Could have
+            # the context also define a metadata schema.
+            #
+            # Another option is to coerce the schema to the first batch in the writer.
+            # This would suppress errors but have consequences for the data. In the all
+            # None case, the column would be represented as object.
+            #   - Implemented this as an option in ``ParquetWriter``. I think worth
+            #     having if the user just wants the process to run and deal with column
+            #     types later. Can always recover from an object type.
             record = self.schema.coerce(record, strict=self.strict)
             record = self._prepend_prefix(record)
         return record
@@ -90,7 +111,7 @@ class Handler:
         """
         Prepend the handler name as a prefix to all keys in the record.
         """
-        record = {f"{self.name}{SEP}{k}": v for k, v in record.items()}
+        record = {f"{self.prefix}{SEP}{k}": v for k, v in record.items()}
         return record
 
 
