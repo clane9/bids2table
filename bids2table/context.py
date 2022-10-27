@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 
 class BIDSContext:
@@ -12,5 +12,5 @@ class BIDSContext:
     def __init__(self, dirpath: Path):
         self.dirpath = dirpath
 
-    def get_metadata(self, path: Union[str, Path]) -> Dict[str, Any]:
+    def get_metadata(self, path: Union[str, Path]) -> Optional[Dict[str, Any]]:
         return {}
