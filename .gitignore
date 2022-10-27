@@ -1,0 +1,29 @@
+.DS_Store
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# Vim
+*.swp
+
+# Distribution / packaging
+*.egg-info/
+dist
+
+# Unit test / coverage reports
+.coverage
+.pytest_cache
+htmlcov
+test_data
+test_results
+
+# VScode IDE
+.vscode/
+.env
+
+# Local scratch
+.scratch
+
+# Jupyter
+.ipynb_checkpoints
