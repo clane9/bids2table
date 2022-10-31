@@ -1,112 +1,142 @@
 import logging
 import os
 import traceback
-from dataclasses import dataclass
+from collections import defaultdict
 from multiprocessing.pool import ThreadPool
-from pathlib import Path
-from typing import Iterable, List, Optional, Tuple
+from typing import Dict, Iterator, List, NamedTuple, Optional, Tuple
 
-import pandas as pd
+import pyarrow as pa
 
-from bids2table.context import BIDSContext
-from bids2table.handlers import Handler, HandlerMap
-from bids2table.record import GroupedRecordTable, Record
+from bids2table import Key, RecordDict, StrOrPath
+from bids2table.context import Context, ContextFactory, bids_context
+from bids2table.handlers import Handler, HandlerLUT
+from bids2table.schema import Schema
+from bids2table.table import Table
 
 
-@dataclass
-class HandlingFailure:
+class HandlingFailure(NamedTuple):
     dirpath: str
     path: str
     pattern: str
     handler: str
 
 
+class MatchResult(NamedTuple):
+    path: str
+    group: str
+    handler: Handler
+
+
+# TODO:
+#   [x] dirpath should be an arg to __call__
+#   [x] context factory should be arg to init
+#   [x] pyarrow table should be the return format
+#       - interchangeable with pandas
+#       - contains schema
+
+
 class Crawler:
     def __init__(
         self,
-        dirpath: Path,
-        handler_map: HandlerMap,
-        max_workers: Optional[int] = None,
+        handlers_map: Dict[str, List[Handler]],
+        context_factory: ContextFactory = bids_context,
+        max_threads: Optional[int] = 8,
+        max_failures: Optional[int] = None,
     ):
-        self.dirpath = dirpath
-        self.handler_map = handler_map
-        if max_workers is None:
+        self.handlers_map = handlers_map
+        self.context_factory = context_factory
+        if max_threads is None:
             # default from ThreadPoolExecutor
-            max_workers = min(32, os.cpu_count() + 4)
-        self.max_workers = max_workers
+            max_threads = min(32, os.cpu_count() + 4)
+        self.max_threads = max_threads
+        self.max_failures = max_failures
+        self._handler_lut = HandlerLUT(handlers_map)
 
-        self.context: Optional[BIDSContext] = None
-
-    def __call__(self) -> Tuple[pd.DataFrame, List[HandlingFailure]]:
+    def __call__(
+        self, dirpath: StrOrPath
+    ) -> Tuple[Dict[str, pa.Table], List[HandlingFailure]]:
         """
-        Crawl the directory, scanning for files matching the list of patterns, and
-        processing each with its associated handler(s). Returns a ``DataFrame`` of
-        extracted and transformed data and a list of failures, if any.
+        Crawl the directory, scanning for files matching the handler patterns, and
+        processing each with the assigned handler(s). Returns a PyArrow ``Table`` of
+        extracted and transformed data, and a list of failures, if any.
 
         TODO:
-            [ ] Discuss how records are grouped into rows by metadata key in the
-                appropriate place.
-            [ ] Exit early after a maximum number of errors?
+            [x] Exit early after a maximum number of errors?
         """
-        self._init_context()
+        context = self.context_factory(dirpath)
+        taskfn = self._make_taskfn(context)
 
-        def taskfn(args):
-            record, err = self._process_one(*args)
-            return args + (record, err)
-
-        # A 2d dict similar to a matlab cell array where rows are indexed by a record
-        # key generated from metadata (``Record.key()``), and columns are indexed by
-        # handler name. Each cell contains a ``Record``. To convert to a pandas table,
-        # the records within a row are flattened together.
-        record_table = GroupedRecordTable(self.handler_map.handlers())
+        column_groups = self._column_groups_from_handlers(self.handlers_map)
+        tables = {
+            group: Table(cg, context.index_names())
+            for group, cg in column_groups.items()
+        }
         errors = []
 
-        with ThreadPool(self.max_workers) as pool:
+        with ThreadPool(self.max_threads) as pool:
             # Lazy streaming evaluation using ``imap_unordered`` applied to a generator.
             # NOTE: Using ``ThreadPool`` instead of the more modern
             # ``ThreadPoolExecutor`` bc it doesn't support this lazy evaluation.
-            for val in pool.imap_unordered(taskfn, self._scan_for_matches()):
-                *_, handler, record, err = val
-                if record is not None:
-                    record_table.add(record, handler)
+            for val in pool.imap_unordered(
+                taskfn, self._scan_for_matches(dirpath, self._handler_lut)
+            ):
+                group, handler, data, err = val
+                if data is not None:
+                    key, record = data
+                    tables[group].put(key, handler.name, record)
                 if err is not None:
                     errors.append(err)
+                    if self.max_failures and len(errors) >= self.max_failures:
+                        raise RuntimeError(
+                            f"Max number of failures {self.max_failures} exceeded"
+                        )
 
-        record_table = record_table.to_pandas()
-        return record_table, errors
+        tables = {group: table.to_pyarrow() for group, table in tables.items()}
+        return tables, errors
 
-    def _init_context(self):
+    @staticmethod
+    def _scan_for_matches(
+        dirpath: StrOrPath,
+        handler_lut: HandlerLUT,
+    ) -> Iterator[MatchResult]:
         """
-        Initialize the directory context.
+        Scan a directory for files matching the handler patterns. Yields tuples of
+        ``(path, group, handler)```.
         """
-        self.context = BIDSContext(self.dirpath)
-
-    def _scan_for_matches(self) -> Iterable[Tuple[str, str, Handler]]:
-        """
-        Scan a directory for files matching the patterns in ``handler_map``. Yields tuples
-        of ``(pattern, path, handler)```.
-        """
-        # TODO: A sub-class or might generalize this to scan S3.
-        with os.scandir(self.dirpath) as it:
+        # TODO: A sub-class might generalize this to scan S3.
+        with os.scandir(str(dirpath)) as it:
             for entry in it:
-                for pattern, handler in self.handler_map.lookup(entry.path):
-                    yield pattern, entry.path, handler
+                for group, handler in handler_lut.lookup(entry.path):
+                    yield MatchResult(entry.path, group, handler)
 
+    @staticmethod
+    def _make_taskfn(context: Context):
+        """
+        Return the actual task function that is mapped by the thread pool over the scan
+        results. Consumes ``args`` tuples from ``scan_for_matches`` and calls
+        ``_process_one``.
+        """
+
+        def taskfn(match: MatchResult):
+            path, group, handler = match
+            data, err = Crawler._process_one(context, path, handler)
+            return group, handler, data, err
+
+        return taskfn
+
+    @staticmethod
     def _process_one(
-        self, pattern: str, path: str, handler: Handler
-    ) -> Tuple[Optional[Record], Optional[HandlingFailure]]:
+        context: Context, path: str, handler: Handler
+    ) -> Tuple[Optional[Tuple[Key, RecordDict]], Optional[HandlingFailure]]:
         """
         Process a single file match with its corresponding handler.
         """
-        assert self.context is not None, "crawler context is uninitialized"
-        # TODO: safe to assume this won't crash (except in catastrophes)?
-        #   - let's say yes
-        metadata = self.context.get_metadata(path)
-        if metadata is None:
+        key = context.get_key(path)
+        if key is None:
             return None, None
 
         try:
-            data = handler(path)
+            record = handler(path)
             err = None
         except Exception:
             # TODO: in this case how to we re-run just the files that failed?
@@ -114,13 +144,31 @@ class Crawler:
             # feature I guess could re-try just the subjects with failures.
             logging.warning(
                 "Handler failed to process a file\n"
-                f"\tdirpath: {self.dirpath}\n"
+                f"\tdirpath: {context.dirpath}\n"
                 f"\tpath: {path}\n"
-                f"\tpattern: {pattern}\n"
+                f"\tpattern: {handler.pattern}\n"
                 f"\thandler: {handler.name}\n\n" + traceback.format_exc() + "\n"
             )
-            data = None
-            err = HandlingFailure(self.dirpath, path, pattern, handler.name)
+            record = None
+            err = HandlingFailure(context.dirpath, path, handler.pattern, handler.name)
 
-        record = None if data is None else Record(metadata, data)
-        return record, err
+        data = None if record is None else (key, record)
+        return data, err
+
+    @staticmethod
+    def _column_groups_from_handlers(
+        handlers_map: Dict[str, List[Handler]]
+    ) -> Dict[str, Dict[str, Schema]]:
+        """
+        Extract column groups from a bunch of handlers, using the ``handler.name`` as
+        the column group key.
+        """
+        column_groups = defaultdict(dict)
+        for group, handlers in handlers_map.items():
+            for handler in handlers:
+                if handler.name in column_groups[group]:
+                    raise RuntimeError(
+                        f"Duplicate handler with name {handler.name} in group {group}"
+                    )
+                column_groups[group][handler.name] = handler.schema
+        return column_groups

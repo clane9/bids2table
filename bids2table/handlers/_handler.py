@@ -1,10 +1,11 @@
 import logging
 from importlib import resources
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple
 
+from bids2table import RecordDict, StrOrPath
 from bids2table._utils import set_overlap
-from bids2table.loaders import Loader, RecordDict, StrOrPath
+from bids2table.loaders import Loader
 from bids2table.schema import PandasType, Schema
 
 __all__ = ["Handler", "HandlerLUT", "LookupResult"]
@@ -63,7 +64,7 @@ class Handler:
                 record, metadata=metadata, convert=convert_dtypes
             )
 
-    def __call__(self, path: StrOrPath) -> RecordDict:
+    def __call__(self, path: StrOrPath) -> Optional[RecordDict]:
         record = self.loader(path)
         if record is not None:
             record = self.apply_renaming(self.rename_map, record)
@@ -77,7 +78,7 @@ class Handler:
         return record
 
     @classmethod
-    def load_example(cls, loader: Loader, path: StrOrPath) -> RecordDict:
+    def load_example(cls, loader: Loader, path: StrOrPath) -> Optional[RecordDict]:
         if path.is_absolute():
             return loader(path)
         elif resources.is_resource(__package__, path):
@@ -91,7 +92,9 @@ class Handler:
         raise FileNotFoundError(f"Example {path} not found")
 
     @staticmethod
-    def apply_renaming(rename_map: Dict[str, str], record: RecordDict) -> RecordDict:
+    def apply_renaming(
+        rename_map: Dict[str, str], record: Optional[RecordDict]
+    ) -> Optional[RecordDict]:
         if record is None:
             return record
         else:
@@ -104,7 +107,7 @@ class Handler:
 
 
 class LookupResult(NamedTuple):
-    group: Optional[str]
+    group: str
     handler: Handler
 
 
@@ -115,9 +118,9 @@ class HandlerLUT:
 
     def __init__(
         self,
-        handlers: Union[List[Handler], Dict[str, List[Handler]]],
+        handlers_map: Dict[str, List[Handler]],
     ):
-        self.handlers = handlers
+        self.handlers_map = handlers_map
 
     def lookup(self, path: StrOrPath) -> Iterator[LookupResult]:
         """
@@ -134,11 +137,8 @@ class HandlerLUT:
                 yield LookupResult(group, handler)
 
     def _iterate(self) -> Iterator[Tuple[Optional[str], Handler]]:
-        if isinstance(self.handlers, list):
-            return ((None, handler) for handler in self.handlers)
-        else:
-            return (
-                (group, handler)
-                for group, handlers in self.handlers.items()
-                for handler in handlers
-            )
+        return (
+            (group, handler)
+            for group, handlers in self.handlers_map.items()
+            for handler in handlers
+        )

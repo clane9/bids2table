@@ -15,7 +15,7 @@ from bids2table.loaders import RecordDict, StrOrPath
 #         assume the input is valid and handle everything outside?
 
 
-def load_single_row_tsv(path: StrOrPath, *, sep: str = "\t") -> RecordDict:
+def load_single_row_tsv(path: StrOrPath, *, sep: str = "\t") -> Optional[RecordDict]:
     """
     Load a data record represented as a single row tsv file.
     """
@@ -51,7 +51,7 @@ def load_matrix_tsv(
     return record
 
 
-def load_json_dict(path: StrOrPath, *, nested: bool = False) -> RecordDict:
+def load_json_dict(path: StrOrPath, *, nested: bool = False) -> Optional[RecordDict]:
     """
     Load a json dictionary. By default, nested containers (i.e. lists, dicts) are
     discarded.

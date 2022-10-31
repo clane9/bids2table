@@ -1,13 +1,11 @@
 from collections import defaultdict
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List
 
 import pandas as pd
 import pyarrow as pa
 
+from bids2table import Key
 from bids2table.schema import Schema
-
-IndexType = Union[str, int]
-KeyType = Union[IndexType, Tuple[IndexType, ...]]
 
 
 class Table:
@@ -25,13 +23,13 @@ class Table:
         self.index_names = index_names
         self._table = defaultdict(dict)
 
-    def put(self, key: KeyType, column_group: str, record: Dict[str, Any]):
+    def put(self, key: Key, column_group: str, record: Dict[str, Any]):
         key = self._check_key(key)
         schema = self.column_groups[column_group]
         row = [record.get(col) for col in schema.columns()]
         self._table[column_group][key] = row
 
-    def _check_key(self, key: KeyType) -> KeyType:
+    def _check_key(self, key: Key) -> Key:
         if isinstance(key, tuple):
             if len(key) != len(self.index_names):
                 raise ValueError(

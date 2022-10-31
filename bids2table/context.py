@@ -1,16 +1,33 @@
+from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Callable, List, Optional
+
+from bids2table import Key, StrOrPath
 
 
-class BIDSContext:
+class Context(ABC):
+    def __init__(self, dirpath: Path):
+        self.dirpath = dirpath
+
+    @abstractmethod
+    def get_key(self, path: StrOrPath) -> Optional[Key]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def index_names(self) -> List[str]:
+        raise NotImplementedError
+
+
+class BIDSContext(Context):
     """
     TODO: BIDSContext will handle the inference of metadata like subject, session,
     modality, etc. It can read global info from the directory, as well as local info
     for each path.
     """
 
-    def __init__(self, dirpath: Path):
-        self.dirpath = dirpath
 
-    def get_metadata(self, path: Union[str, Path]) -> Optional[Dict[str, Any]]:
-        return {}
+ContextFactory = Callable[[StrOrPath], Context]
+
+
+def bids_context(dirpath: StrOrPath) -> BIDSContext:
+    return BIDSContext(dirpath)

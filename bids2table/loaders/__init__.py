@@ -1,13 +1,10 @@
-from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Optional
 
 from typing_extensions import Protocol
 
-# TODO: is this the right idiom? What about `os.PathLike`?
-StrOrPath = Union[str, Path]
-RecordDict = Optional[Dict[str, Any]]
+from bids2table import RecordDict, StrOrPath
 
 
 class Loader(Protocol):
-    def __call__(self, path: StrOrPath, **kwargs) -> RecordDict:
+    def __call__(self, path: StrOrPath, **kwargs) -> Optional[RecordDict]:
         ...
