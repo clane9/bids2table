@@ -1,92 +1,91 @@
-import logging
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, Dict, List, Union
 
+import numpy as np
+import pandas as pd
 import pyarrow as pa
 
-
-class Field(NamedTuple):
-    name: str
-    dtype: Optional[type] = None
+PandasType = Union[str, type, np.dtype]
 
 
 class Schema:
     """
-    A table schema following `pyarrow Schema`_
+    A table schema patterned after `pyarrow Schema`_
 
     .. _pyarrow Schema: https://arrow.apache.org/docs/python/data.html#schemas
 
     TODO:
         [x] check/coerce that a record conforms to a schema?
-        [ ] record which fields need serialization?
-        [ ] cast a record to pyarrow?
+        [x] record which fields need serialization?
+            - implicit with object types
+        [x] cast a record to pyarrow?
+            - maybe, but somewhere else
         [x] allow loose typing, e.g. with Any?
+            - no. types are required. but you can infer from a valid example.
+
+    TODO:
+        [x] `from_pandas` interface to infer from a pandas df example.
+
+    TODO: How do I plan to get the metadata into the parquet? Would need to carry the
+    pyarrow schema all the way through. Maybe I should convert to pyarrow format sooner.
+    Perhaps in the ``GroupedRecordTable``.
     """
 
     def __init__(
         self,
-        fields: List[Union[str, Tuple[str, type], Field]],
-        metadata: Dict[str, Any],
+        fields: Dict[str, PandasType],
+        metadata: Dict[str, Any] = {},
     ):
-        self.fields: List[Field] = []
-        for field in fields:
-            if not isinstance(field, tuple):
-                field = (field,)
-            self.fields.append(Field(*field))
-
+        self.fields = fields
         self.metadata = metadata
 
     def columns(self) -> List[str]:
-        return [field.name for field in self.fields]
+        return list(self.fields.keys())
 
     def dtypes(self) -> List[type]:
-        return [field.dtype for field in self.fields]
+        return list(self.fields.values())
+
+    def empty(self) -> pd.DataFrame:
+        df = pd.DataFrame(columns=self.columns())
+        df = df.astype(self.fields)
+        return df
 
     def to_pyarrow(self) -> pa.Schema:
-        fields = []
-        for field in self.fields:
-            name, dtype = field
-            if dtype is None:
-                raise RuntimeError(
-                    "All schema dtypes must be defined to convert to pyarrow"
-                )
-            if not isinstance(dtype, pa.DataType):
-                try:
-                    dtype = pa.from_numpy_dtype(dtype)
-                except pa.ArrowNotImplementedError:
-                    # TODO: how and where should we remember that these columns need
-                    # serialization?
-                    dtype = pa.binary()
-            fields.append((name, dtype))
-        schema = pa.schema(fields, metadata=self.metadata)
+        schema = pa.Schema.from_pandas(self.empty())
+        schema = schema.with_metadata(self.metadata)
         return schema
 
-    def null_record(self) -> Dict[str, None]:
+    @classmethod
+    def from_record(
+        cls,
+        record: Dict[str, Any],
+        metadata: Dict[str, Any] = {},
+        convert: bool = False,
+    ) -> "Schema":
         """
-        Generate a null record
+        Infer a schema from a record dict.
+
+        If ``convert`` is ``True``, columns will be converted to their "best possible"
+        (nullable) data types.
         """
-        return {field.name: None for field in self.fields}
+        df = pd.DataFrame.from_records([record])
+        return cls.from_pandas(df, metadata=metadata, convert=convert)
 
     @classmethod
-    def from_dict(cls, schema_dict: Dict[str, Any]) -> "Schema":
-        return cls(**schema_dict)
+    def from_pandas(
+        cls,
+        df: pd.DataFrame,
+        metadata: Dict[str, Any] = {},
+        convert: bool = False,
+    ) -> "Schema":
+        """
+        Infer a schema from a pandas dataframe.
 
-    def coerce(self, record: Dict[str, Any], strict: bool = False) -> Dict[str, Any]:
+        If ``convert`` is ``True``, columns will be converted to their "best possible"
+        (nullable) data types.
+
+        NOTE: ``convert=True`` requires pandas>=1.2.0
         """
-        Coerce a record to match the schema.
-        """
-        coerced = {}
-        for field in self.fields:
-            value = record.get(field.name)
-            if not (field.dtype is None or isinstance(value, field.dtype)):
-                if strict:
-                    # TODO: should we complain if the field.dtype is None in this case?
-                    value = field.dtype(value)
-                else:
-                    logging.warning(
-                        "Value for field '%s' has dtype '%s'; expected '%s'",
-                        field.name,
-                        type(value),
-                        field.dtype,
-                    )
-            coerced[field.name] = value
-        return coerced
+        if convert:
+            df = df.convert_dtypes()
+        fields = list(df.dtypes.to_dict().items())
+        return cls(fields, metadata=metadata)
