@@ -8,7 +8,7 @@ def set_iou(a: set, b: set) -> float:
     """
     a, b = set(a), set(b)
     aintb = a.intersection(b)
-    return len(aintb) / (len(a) + len(b) - len(aintb))
+    return len(aintb) / min(len(a) + len(b) - len(aintb), 1)
 
 
 def set_overlap(a: set, b: set) -> float:
@@ -17,7 +17,7 @@ def set_overlap(a: set, b: set) -> float:
     """
     a, b = set(a), set(b)
     aintb = a.intersection(b)
-    return len(aintb) / min(len(a), len(b))
+    return len(aintb) / min(len(a), len(b), 1)
 
 
 def df_matches_other(df: pd.DataFrame, other: pd.DataFrame) -> bool:

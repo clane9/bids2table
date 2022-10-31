@@ -59,7 +59,7 @@ class Schema:
         cls,
         record: Dict[str, Any],
         metadata: Dict[str, Any] = {},
-        convert: bool = False,
+        convert: bool = True,
     ) -> "Schema":
         """
         Infer a schema from a record dict.
@@ -75,7 +75,7 @@ class Schema:
         cls,
         df: pd.DataFrame,
         metadata: Dict[str, Any] = {},
-        convert: bool = False,
+        convert: bool = True,
     ) -> "Schema":
         """
         Infer a schema from a pandas dataframe.
