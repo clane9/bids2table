@@ -8,7 +8,7 @@ from typing import Dict, Iterator, List, NamedTuple, Optional, Tuple
 import pyarrow as pa
 
 from bids2table import Key, RecordDict, StrOrPath
-from bids2table.context import Context, ContextFactory, bids_context
+from bids2table.context import Context
 from bids2table.handlers import Handler, HandlerLUT
 from bids2table.schema import Schema
 from bids2table.table import Table
@@ -39,12 +39,12 @@ class Crawler:
     def __init__(
         self,
         handlers_map: Dict[str, List[Handler]],
-        context_factory: ContextFactory = bids_context,
+        context: Context,
         max_threads: Optional[int] = 8,
         max_failures: Optional[int] = None,
     ):
         self.handlers_map = handlers_map
-        self.context_factory = context_factory
+        self.context = context
         if max_threads is None:
             # default from ThreadPoolExecutor
             max_threads = min(32, (os.cpu_count() or 1) + 4)
@@ -63,12 +63,12 @@ class Crawler:
         TODO:
             [x] Exit early after a maximum number of errors?
         """
-        context = self.context_factory(dirpath)
-        taskfn = self._make_taskfn(context)
+        self.context.set_root(dirpath)
+        taskfn = self._make_taskfn(self.context)
 
         column_groups = self._column_groups_from_handlers(self.handlers_map)
         tables = {
-            group: Table(cg, context.index_names())
+            group: Table(cg, self.context.index_names())
             for group, cg in column_groups.items()
         }
         errors = []
@@ -144,14 +144,14 @@ class Crawler:
             # feature I guess could re-try just the subjects with failures.
             logging.warning(
                 "Handler failed to process a file\n"
-                f"\tdirpath: {context.dirpath}\n"
+                f"\tdirpath: {context.root}\n"
                 f"\tpath: {path}\n"
                 f"\tpattern: {handler.pattern}\n"
                 f"\thandler: {handler.name}\n\n" + traceback.format_exc() + "\n"
             )
             record = None
             err = HandlingFailure(
-                str(context.dirpath), path, handler.pattern, handler.name
+                str(context.root), path, handler.pattern, handler.name
             )
 
         data = None if record is None else (key, record)

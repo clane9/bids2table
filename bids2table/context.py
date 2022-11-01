@@ -1,13 +1,17 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 from bids2table import Key, StrOrPath
 
 
 class Context(ABC):
-    def __init__(self, dirpath: StrOrPath):
-        self.dirpath = Path(dirpath)
+    def __init__(self) -> None:
+        self.root: Optional[Path] = None
+
+    @abstractmethod
+    def set_root(self, dirpath: StrOrPath) -> None:
+        raise NotImplementedError
 
     @abstractmethod
     def get_key(self, path: StrOrPath) -> Optional[Key]:
@@ -25,6 +29,10 @@ class BIDSContext(Context):
     for each path.
     """
 
+    def set_root(self, dirpath: StrOrPath):
+        # TODO
+        self.root = Path(dirpath)
+
     def get_key(self, path: StrOrPath) -> Optional[Key]:
         # TODO
         return None
@@ -32,10 +40,3 @@ class BIDSContext(Context):
     def index_names(self) -> List[str]:
         # TODO
         return []
-
-
-ContextFactory = Callable[[StrOrPath], Context]
-
-
-def bids_context(dirpath: StrOrPath) -> BIDSContext:
-    return BIDSContext(dirpath)
