@@ -45,9 +45,6 @@ class Handler:
         rename_map: Dict[str, str] = {},
         convert_dtypes: bool = True,
     ):
-        if sum(arg is not None for arg in [fields, example]) != 1:
-            raise ValueError("Exactly one of 'fields' or 'example' is required")
-
         self.loader = loader
         self.name = name
         self.pattern = pattern
@@ -55,19 +52,21 @@ class Handler:
 
         if fields is not None:
             self.schema = Schema(fields, metadata)
-        else:
+        elif example is not None:
             record = self.load_example(loader, example)
+            record = self.apply_renaming(rename_map, record)
             if record is None:
                 raise ValueError(f"Example {example} is invalid for loader {loader}")
-            record = self.apply_renaming(rename_map, record)
             self.schema = Schema.from_record(
                 record, metadata=metadata, convert=convert_dtypes
             )
+        else:
+            raise ValueError("One of 'fields' or 'example' is required")
 
     def __call__(self, path: StrOrPath) -> Optional[RecordDict]:
         record = self.loader(path)
+        record = self.apply_renaming(self.rename_map, record)
         if record is not None:
-            record = self.apply_renaming(self.rename_map, record)
             overlap = set_overlap(self.schema.columns(), record.keys())
             if overlap < 1:
                 logging.warning(
@@ -79,13 +78,13 @@ class Handler:
 
     @classmethod
     def load_example(cls, loader: Loader, path: StrOrPath) -> Optional[RecordDict]:
+        path = Path(path)
         if path.is_absolute():
             return loader(path)
-        elif resources.is_resource(__package__, path):
-            with resources.path(__package__, path) as p:
+        elif resources.is_resource(__package__, str(path)):
+            with resources.path(__package__, str(path)) as p:
                 return loader(p)
         else:
-            path = Path(path)
             for dirpath in cls.__EXAMPLES_PATH:
                 if (dirpath / path).exists():
                     return loader(path)
@@ -136,7 +135,7 @@ class HandlerLUT:
             if path.match(handler.pattern):
                 yield LookupResult(group, handler)
 
-    def _iterate(self) -> Iterator[Tuple[Optional[str], Handler]]:
+    def _iterate(self) -> Iterator[Tuple[str, Handler]]:
         return (
             (group, handler)
             for group, handlers in self.handlers_map.items()

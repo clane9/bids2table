@@ -21,7 +21,7 @@ class Table:
 
         self.column_groups = column_groups
         self.index_names = index_names
-        self._table = defaultdict(dict)
+        self._table: Dict[str, Dict[Key, List[Any]]] = defaultdict(dict)
 
     def put(self, key: Key, column_group: str, record: Dict[str, Any]):
         key = self._check_key(key)

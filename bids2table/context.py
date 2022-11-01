@@ -6,8 +6,8 @@ from bids2table import Key, StrOrPath
 
 
 class Context(ABC):
-    def __init__(self, dirpath: Path):
-        self.dirpath = dirpath
+    def __init__(self, dirpath: StrOrPath):
+        self.dirpath = Path(dirpath)
 
     @abstractmethod
     def get_key(self, path: StrOrPath) -> Optional[Key]:
@@ -24,6 +24,14 @@ class BIDSContext(Context):
     modality, etc. It can read global info from the directory, as well as local info
     for each path.
     """
+
+    def get_key(self, path: StrOrPath) -> Optional[Key]:
+        # TODO
+        return None
+
+    def index_names(self) -> List[str]:
+        # TODO
+        return []
 
 
 ContextFactory = Callable[[StrOrPath], Context]

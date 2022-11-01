@@ -47,7 +47,7 @@ class Crawler:
         self.context_factory = context_factory
         if max_threads is None:
             # default from ThreadPoolExecutor
-            max_threads = min(32, os.cpu_count() + 4)
+            max_threads = min(32, (os.cpu_count() or 1) + 4)
         self.max_threads = max_threads
         self.max_failures = max_failures
         self._handler_lut = HandlerLUT(handlers_map)
@@ -150,7 +150,9 @@ class Crawler:
                 f"\thandler: {handler.name}\n\n" + traceback.format_exc() + "\n"
             )
             record = None
-            err = HandlingFailure(context.dirpath, path, handler.pattern, handler.name)
+            err = HandlingFailure(
+                str(context.dirpath), path, handler.pattern, handler.name
+            )
 
         data = None if record is None else (key, record)
         return data, err
@@ -163,7 +165,7 @@ class Crawler:
         Extract column groups from a bunch of handlers, using the ``handler.name`` as
         the column group key.
         """
-        column_groups = defaultdict(dict)
+        column_groups: Dict[str, Dict[str, Schema]] = defaultdict(dict)
         for group, handlers in handlers_map.items():
             for handler in handlers:
                 if handler.name in column_groups[group]:

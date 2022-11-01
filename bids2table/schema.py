@@ -1,8 +1,10 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+
+from bids2table import RecordDict
 
 PandasType = Union[str, type, np.dtype]
 
@@ -41,8 +43,8 @@ class Schema:
     def columns(self) -> List[str]:
         return list(self.fields.keys())
 
-    def dtypes(self) -> List[type]:
-        return list(self.fields.values())
+    def dtypes(self) -> pd.Series:
+        pd.Series(self.fields)
 
     def empty(self) -> pd.DataFrame:
         df = pd.DataFrame(columns=self.columns())
@@ -54,10 +56,32 @@ class Schema:
         schema = schema.with_metadata(self.metadata)
         return schema
 
+    def matches(self, df: pd.DataFrame) -> bool:
+        """
+        Check if a ``DataFrame`` matches the schema.
+        """
+        return (df.dtypes == self.dtypes()).all()
+
+    def coerce(self, df: pd.DataFrame, inplace: bool = False) -> pd.DataFrame:
+        """
+        Coerce a ``DataFrame`` to match the schema.
+        """
+        if self.matches(df):
+            return df
+        if not inplace:
+            df = df.copy()
+        columns = np.array(self.columns())
+        missing_cols = np.setdiff1d(columns, df.columns)
+        if len(missing_cols) > 0:
+            df.loc[:, missing_cols] = None
+        df = df.loc[:, columns]
+        df = df.astype(self.fields)
+        return df
+
     @classmethod
     def from_record(
         cls,
-        record: Dict[str, Any],
+        record: RecordDict,
         metadata: Dict[str, Any] = {},
         convert: bool = True,
     ) -> "Schema":
@@ -87,5 +111,18 @@ class Schema:
         """
         if convert:
             df = df.convert_dtypes()
-        fields = list(df.dtypes.to_dict().items())
-        return cls(fields, metadata=metadata)
+        return cls(df.dtypes.to_dict(), metadata=metadata)
+
+    @classmethod
+    def from_pyarrow(
+        cls,
+        *,
+        schema: Optional[pa.Schema] = None,
+        table: Optional[pa.Table] = None,
+    ):
+        if schema is not None:
+            table = schema.empty_table()
+        elif table is None:
+            raise ValueError("One of 'schema' or 'table' is required")
+        df = table.to_pandas()
+        return cls.from_pandas(df, metadata=table.schema.metadata, convert=False)

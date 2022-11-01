@@ -1,15 +1,18 @@
 import logging
-from typing import Optional
+from typing import Optional, Union
 
 import pandas as pd
 import pyarrow as pa
 
-from ._utils import df_as_other, df_matches_other
+from bids2table.schema import Schema
+
+TableBatch = Union[pd.DataFrame, pa.Table]
 
 
 class ParquetWriter:
     """
-    Write a stream of pandas ``DataFrame`` batches to a parquet file using `PyArrow`_
+    Write a stream of pandas ``DataFrame`` or `PyArrow`_ ``Table`` batches to a parquet
+    file using `PyArrow`_
 
     Example::
 
@@ -35,20 +38,21 @@ class ParquetWriter:
     def __init__(self, path: str, coerce: bool = False):
         self.path = path
         self.coerce = coerce
-        self.schema: Optional[pa.Schema] = None
-        self._first_batch: Optional[pd.DataFrame] = None
+        self.schema: Optional[Schema] = None
         self._stream: Optional[pa.RecordBatchFileWriter] = None
         self._batch_count = 0
 
-    def _init_stream(self, first_batch: pd.DataFrame):
+    def _init_stream(self, first_batch: TableBatch):
         """
         Initialize the stream, using the first batch to set the schema.
         """
         if self._stream is not None:
             raise RuntimeError("parquet stream is already initialized")
-        self.schema = pa.Schema.from_pandas(first_batch)
-        self._first_batch = first_batch
-        self._stream = pa.RecordBatchFileWriter(self.path, self.schema)
+        if isinstance(first_batch, pd.DataFrame):
+            self.schema = Schema.from_pandas(first_batch)
+        else:
+            self.schema = Schema.from_pyarrow(table=first_batch)
+        self._stream = pa.RecordBatchFileWriter(self.path, self.schema.to_pyarrow())
 
     def close(self):
         """
@@ -57,7 +61,7 @@ class ParquetWriter:
         if self._stream is not None:
             self._stream.close()
 
-    def write(self, batch: pd.DataFrame):
+    def write(self, batch: TableBatch):
         """
         Write a batch to the stream. If this is the first batch, the stream is
         initialized.
@@ -66,20 +70,20 @@ class ParquetWriter:
         if self._stream is None:
             self._init_stream(batch)
 
-        if not df_matches_other(batch, self._first_batch):
-            logging.warning(
-                "Parquet writer batch %d has a different schema\n\tpath: %s",
-                self._batch_count,
-                self.path,
-            )
-            if self.coerce:
-                logging.info(
-                    "Coercing batch %d to match the first batch's schema",
+        # NOTE: we assume if you're passing a pa.Table, you're being deliberate about
+        # the schema. So we don't try to coerce anything.
+        if isinstance(batch, pd.DataFrame):
+            if not self.schema.matches(batch):
+                logging.warning(
+                    "Parquet writer batch %d has a different schema\n\tpath: %s",
                     self._batch_count,
+                    self.path,
                 )
-                batch = df_as_other(batch, self._first_batch)
+                if self.coerce:
+                    batch = self.schema.coerce(batch)
+            batch = pa.Table.from_pandas(batch)
+            batch = batch.replace_schema_metadata(self.schema.metadata)
 
-        batch = pa.Table.from_pandas(batch)
         self._stream.write_table(batch)
 
     def __enter__(self) -> "ParquetWriter":
