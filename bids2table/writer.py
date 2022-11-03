@@ -3,6 +3,7 @@ from typing import Optional, Union
 
 import pandas as pd
 import pyarrow as pa
+from pyarrow import parquet as pq
 
 from bids2table.schema import Schema
 
@@ -35,12 +36,21 @@ class ParquetWriter:
     .. _PyArrow: https://arrow.apache.org/docs/python
     """
 
-    def __init__(self, path: str, coerce: bool = False):
+    def __init__(
+        self,
+        path: str,
+        coerce: bool = False,
+        buffer_size: int = 64 * 1024 * 1024,
+    ):
         self.path = path
         self.coerce = coerce
+        self.buffer_size = buffer_size
         self.schema: Optional[Schema] = None
-        self._stream: Optional[pa.RecordBatchFileWriter] = None
+        self._table: Optional[pa.Table] = None
+        self._stream: Optional[pq.ParquetWriter] = None
+        # TODO: do something with these values
         self._batch_count = 0
+        self._total_bytes_written = 0
 
     def _init_stream(self, first_batch: TableBatch):
         """
@@ -52,7 +62,8 @@ class ParquetWriter:
             self.schema = Schema.from_pandas(first_batch)
         else:
             self.schema = Schema.from_pyarrow(table=first_batch)
-        self._stream = pa.RecordBatchFileWriter(self.path, self.schema.to_pyarrow())
+        # TODO: expose kwargs as config options
+        self._stream = pq.ParquetWriter(self.path, self.schema.to_pyarrow())
 
     def close(self):
         """
@@ -69,9 +80,19 @@ class ParquetWriter:
         self._batch_count += 1
         if self._stream is None:
             self._init_stream(batch)
+        batch = self._to_pyarrow(batch)
+        if self._table is None:
+            self._table = batch
+        else:
+            self._table = pa.concat_tables([self._table, batch])
+        if self._table.get_total_buffer_size() > self.buffer_size:
+            self.flush()
 
-        # NOTE: we assume if you're passing a pa.Table, you're being deliberate about
-        # the schema. So we don't try to coerce anything.
+    def _to_pyarrow(self, batch: TableBatch) -> pa.Table:
+        """
+        Convert a table batch to a PyArrow ``Table`` (if necessary).
+        """
+        assert self.schema is not None, "writer schema not initialized"
         if isinstance(batch, pd.DataFrame):
             if not self.schema.matches(batch):
                 logging.warning(
@@ -83,11 +104,20 @@ class ParquetWriter:
                     batch = self.schema.coerce(batch)
             batch = pa.Table.from_pandas(batch)
             batch = batch.replace_schema_metadata(self.schema.metadata)
+        return batch
 
-        self._stream.write_table(batch)
+    def flush(self):
+        """
+        Flush the internal buffer.
+        """
+        if self._table is not None:
+            self._total_bytes_written += self._table.get_total_buffer_size()
+            self._stream.write_table(self._table)
+            self._table = None
 
     def __enter__(self) -> "ParquetWriter":
         return self
 
     def __exit__(self):
+        self.flush()
         self.close()
