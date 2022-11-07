@@ -127,6 +127,9 @@ class HandlerLUT:
         of ``(group, handler)``.
         """
         path = Path(path)
+        # TODO: this will be expensive if you have a lot of files and handlers. One way
+        # to save work is to group handlers by extenstion, and then match a file to the
+        # unique extension. Most files will likely match nothing.
         for group, handler in self._iterate():
             # TODO: could consider generalizing this pattern matching to:
             #   - tuples of globs
