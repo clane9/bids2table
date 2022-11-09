@@ -4,12 +4,12 @@ from typing import List, Optional
 
 from bids2table import Key, StrOrPath
 
-__all__ = ["Context"]
+__all__ = ["Indexer"]
 
 
-class Context(ABC):
+class Indexer(ABC):
     """
-    A ``Context`` generates the row ``key`` for a given path.
+    An ``Indexer`` generates the row ``key`` for a given path.
 
     Sub-classes should implement ``index_names()`` and ``get_key()`` and optionally
     override ``set_root()``.

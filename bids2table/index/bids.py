@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from bids2table import Key, StrOrPath
-from bids2table.context import Context
+from bids2table.index import Indexer
 
 BIDSValue = Union[str, int, float]
 
@@ -95,9 +95,9 @@ class BIDSEntity:
         return value
 
 
-class BIDSContext(Context):
+class BIDSIndexer(Indexer):
     """
-    Context for a `BIDS`_ analysis directory.
+    Indexer for a `BIDS`_ analysis directory.
 
     .. _BIDS: https://bids-specification.readthedocs.io
 
@@ -114,9 +114,9 @@ class BIDSContext(Context):
         self.columns = columns
 
     @classmethod
-    def from_config(cls, cfg: List[Union[str, Dict[str, Any]]]) -> "BIDSContext":
+    def from_config(cls, cfg: List[Union[str, Dict[str, Any]]]) -> "BIDSIndexer":
         """
-        Initialize context from a list of column entity configs.
+        Initialize indexer from a list of column entity configs.
         """
         columns = []
         for entry in cfg:

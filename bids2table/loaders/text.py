@@ -33,9 +33,8 @@ def load_single_row_tsv(path: StrOrPath, *, sep: str = "\t") -> Optional[RecordD
 # We don't necessarily want each one in a different row. But we don't want to have to
 # write a separate handler for each either.
 #
-# Is there some way for the context to help us? Maybe the context can return `metadata`
-# and `prefix`. In general, the metadata should help us figure out the row key and
-# column group key.
+# I think the approach should be to generate handlers in a loop. And then possibly be
+# able select handlers using a glob pattern.
 
 
 def load_matrix_tsv(
