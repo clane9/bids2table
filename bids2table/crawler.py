@@ -27,24 +27,19 @@ class MatchResult(NamedTuple):
     handler: Handler
 
 
-# TODO:
-#   [x] dirpath should be an arg to __call__
-#   [x] indexer factory should be arg to init
-#   [x] pyarrow table should be the return format
-#       - interchangeable with pandas
-#       - contains schema
-
-
 class Crawler:
     def __init__(
         self,
         handlers_map: Dict[str, List[Handler]],
-        indexer: Indexer,
+        indexers_map: Dict[str, Indexer],
         max_threads: Optional[int] = 8,
         max_failures: Optional[int] = None,
     ):
+        if not list(handlers_map.keys()) == list(indexers_map.keys()):
+            raise ValueError("handlers_map and indexers_map should have identical keys")
+
         self.handlers_map = handlers_map
-        self.indexer = indexer
+        self.indexers_map = indexers_map
         if max_threads is None:
             # default from ThreadPoolExecutor
             max_threads = min(32, (os.cpu_count() or 1) + 4)
@@ -59,18 +54,14 @@ class Crawler:
         Crawl the directory, scanning for files matching the handler patterns, and
         processing each with the assigned handler(s). Returns a PyArrow ``Table`` of
         extracted and transformed data, and a list of failures, if any.
-
-        TODO:
-            [x] Exit early after a maximum number of errors?
         """
-        # TODO: different tables will have different index columns. so in general we'll
-        # need one "indexer" per table.
-        self.indexer.set_root(dirpath)
-        taskfn = self._make_taskfn(self.indexer)
+        for indexer in self.indexers_map.values():
+            indexer.set_root(dirpath)
+        taskfn = self._make_taskfn(self.indexers_map)
 
         column_groups = self._column_groups_from_handlers(self.handlers_map)
         tables = {
-            group: Table(cg, self.indexer.index_names())
+            group: Table(cg, self.indexers_map[group].index_names())
             for group, cg in column_groups.items()
         }
         errors = []
@@ -112,7 +103,7 @@ class Crawler:
                     yield MatchResult(entry.path, group, handler)
 
     @staticmethod
-    def _make_taskfn(indexer: Indexer):
+    def _make_taskfn(indexers_map: Dict[str, Indexer]):
         """
         Return the actual task function that is mapped by the thread pool over the scan
         results. Consumes ``args`` tuples from ``scan_for_matches`` and calls
@@ -121,6 +112,7 @@ class Crawler:
 
         def taskfn(match: MatchResult):
             path, group, handler = match
+            indexer = indexers_map[group]
             data, err = Crawler._process_one(indexer, path, handler)
             return group, handler, data, err
 
