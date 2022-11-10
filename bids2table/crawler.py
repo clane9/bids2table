@@ -9,7 +9,7 @@ import pyarrow as pa
 
 from bids2table import Key, RecordDict, StrOrPath
 from bids2table.handlers import Handler, HandlerLUT
-from bids2table.index import Indexer
+from bids2table.indexers import Indexer
 from bids2table.schema import Schema
 from bids2table.table import Table
 
@@ -156,15 +156,15 @@ class Crawler:
         handlers_map: Dict[str, List[Handler]]
     ) -> Dict[str, Dict[str, Schema]]:
         """
-        Extract column groups from a bunch of handlers, using the ``handler.name`` as
+        Extract column groups from a bunch of handlers, using the ``handler.label`` as
         the column group key.
         """
         column_groups: Dict[str, Dict[str, Schema]] = defaultdict(dict)
         for group, handlers in handlers_map.items():
             for handler in handlers:
-                if handler.name in column_groups[group]:
+                if handler.label in column_groups[group]:
                     raise RuntimeError(
-                        f"Duplicate handler with name {handler.name} in group {group}"
+                        f"Duplicate handler with label {handler.label} in group {group}"
                     )
-                column_groups[group][handler.name] = handler.schema
+                column_groups[group][handler.label] = handler.schema
         return column_groups

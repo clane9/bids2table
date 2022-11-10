@@ -3,7 +3,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from bids2table import Key, StrOrPath
-from bids2table.index import Indexer
+from bids2table.indexers import Indexer, register_indexer
+
+__all__ = [
+    "BIDSValue",
+    "BIDSEntity",
+    "BIDSIndexer",
+]
 
 BIDSValue = Union[str, int, float]
 
@@ -95,6 +101,7 @@ class BIDSEntity:
         return value
 
 
+@register_indexer("BIDSIndexer")
 class BIDSIndexer(Indexer):
     """
     Indexer for a `BIDS`_ analysis directory.
@@ -105,27 +112,25 @@ class BIDSIndexer(Indexer):
         columns: list of BIDS entities making up the index.
     """
 
-    def __init__(self, columns: List[BIDSEntity]):
+    def __init__(
+        self,
+        columns: List[Union[str, Dict[str, Any], BIDSEntity]],
+    ):
+        columns_ = []
         for col in columns:
+            if isinstance(col, str):
+                col = BIDSEntity(name=col)
+            elif isinstance(col, dict):
+                col = BIDSEntity(**col)
+            elif not isinstance(col, BIDSEntity):
+                raise TypeError(f"Invalid BIDS index column {col}")
+
             if col.dtype not in {"str", "int"}:
                 raise ValueError(
                     "Only 'str' and 'int' BIDS entities supported in an index."
                 )
-        self.columns = columns
-
-    @classmethod
-    def from_config(cls, cfg: List[Union[str, Dict[str, Any]]]) -> "BIDSIndexer":
-        """
-        Initialize indexer from a list of column entity configs.
-        """
-        columns = []
-        for entry in cfg:
-            if isinstance(entry, str):
-                col = BIDSEntity(entry)
-            else:
-                col = BIDSEntity(**entry)
-            columns.append(col)
-        return cls(columns)
+            columns_.append(col)
+        self.columns: List[BIDSEntity] = columns_
 
     def get_key(self, path: StrOrPath) -> Optional[Key]:
         key = []

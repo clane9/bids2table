@@ -3,12 +3,14 @@ from importlib import resources
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple
 
-from bids2table import RecordDict, StrOrPath
-from bids2table._utils import set_overlap
+from bids2table import RecordDict, StrOrPath, find_file
+from bids2table._utils import Catalog, set_overlap
 from bids2table.loaders import Loader
 from bids2table.schema import PandasType, Schema
 
 __all__ = ["Handler", "HandlerLUT", "LookupResult"]
+
+HANDLER_CATALOG: Catalog["Handler"] = Catalog()
 
 
 class Handler:
@@ -31,8 +33,6 @@ class Handler:
         [ ] retry logic?
     """
 
-    __EXAMPLES_PATH = ["."]
-
     def __init__(
         self,
         loader: Loader,
@@ -41,13 +41,16 @@ class Handler:
         pattern: str,
         fields: Optional[Dict[str, PandasType]] = None,
         example: Optional[StrOrPath] = None,
+        label: Optional[str] = None,
         metadata: Dict[str, Any] = {},
         rename_map: Dict[str, str] = {},
         convert_dtypes: bool = True,
+        register: bool = True,
     ):
         self.loader = loader
         self.name = name
         self.pattern = pattern
+        self.label = name if label is None else label
         self.rename_map = rename_map
 
         if fields is not None:
@@ -62,6 +65,9 @@ class Handler:
             )
         else:
             raise ValueError("One of 'fields' or 'example' is required")
+
+        if register:
+            HANDLER_CATALOG.register(self.name, self)
 
     def __call__(self, path: StrOrPath) -> Optional[RecordDict]:
         record = self.loader(path)
@@ -78,17 +84,14 @@ class Handler:
 
     @classmethod
     def load_example(cls, loader: Loader, path: StrOrPath) -> Optional[RecordDict]:
-        path = Path(path)
-        if path.is_absolute():
-            return loader(path)
-        elif resources.is_resource(__package__, str(path)):
+        if resources.is_resource(__package__, str(path)):
             with resources.path(__package__, str(path)) as p:
                 return loader(p)
         else:
-            for dirpath in cls.__EXAMPLES_PATH:
-                if (dirpath / path).exists():
-                    return loader(path)
-        raise FileNotFoundError(f"Example {path} not found")
+            p = find_file(path)
+            if p is None:
+                raise FileNotFoundError(f"Example {path} not found")
+            return loader(p)
 
     @staticmethod
     def apply_renaming(
@@ -98,11 +101,6 @@ class Handler:
             return record
         else:
             return {rename_map.get(k, k): v for k, v in record.items()}
-
-    @staticmethod
-    def append_examples_path(path: str):
-        path = str(Path(path).resolve())
-        Handler.__EXAMPLES_PATH.append(path)
 
 
 class LookupResult(NamedTuple):
