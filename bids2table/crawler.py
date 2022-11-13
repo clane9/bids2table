@@ -27,6 +27,11 @@ class MatchResult(NamedTuple):
     handler: Handler
 
 
+class CrawlCounts(NamedTuple):
+    total: int
+    errors: int
+
+
 class Crawler:
     def __init__(
         self,
@@ -49,7 +54,7 @@ class Crawler:
 
     def __call__(
         self, dirpath: StrOrPath
-    ) -> Tuple[Dict[str, pa.Table], List[HandlingFailure]]:
+    ) -> Tuple[Dict[str, pa.Table], List[HandlingFailure], CrawlCounts]:
         """
         Crawl the directory, scanning for files matching the handler patterns, and
         processing each with the assigned handler(s). Returns a PyArrow ``Table`` of
@@ -60,10 +65,13 @@ class Crawler:
         taskfn = self._make_taskfn(self.indexers_map)
 
         column_groups = self._column_groups_from_handlers(self.handlers_map)
+        constants = {"_dir": str(dirpath)}
         tables = {
-            group: Table(cg, self.indexers_map[group].index_names())
+            group: Table(cg, self.indexers_map[group].index_names(), constants)
             for group, cg in column_groups.items()
         }
+
+        count, err_count = 0, 0
         errors = []
 
         with ThreadPool(self.max_threads) as pool:
@@ -77,15 +85,17 @@ class Crawler:
                 if data is not None:
                     key, record = data
                     tables[group].put(key, handler.name, record)
+                    count += 1
                 if err is not None:
                     errors.append(err)
+                    err_count += 1
                     if self.max_failures and len(errors) >= self.max_failures:
                         raise RuntimeError(
                             f"Max number of failures {self.max_failures} exceeded"
                         )
 
         tables = {group: table.to_pyarrow() for group, table in tables.items()}
-        return tables, errors
+        return tables, errors, CrawlCounts(count, err_count)
 
     @staticmethod
     def _scan_for_matches(
