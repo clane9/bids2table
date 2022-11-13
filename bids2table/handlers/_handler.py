@@ -8,7 +8,12 @@ from bids2table._utils import Catalog, set_overlap
 from bids2table.loaders import Loader
 from bids2table.schema import PandasType, Schema
 
-__all__ = ["Handler", "HandlerLUT", "LookupResult"]
+__all__ = [
+    "HANDLER_CATALOG",
+    "Handler",
+    "HandlerLUT",
+    "LookupResult",
+]
 
 HANDLER_CATALOG: Catalog["Handler"] = Catalog()
 
@@ -36,9 +41,9 @@ class Handler:
     def __init__(
         self,
         loader: Loader,
-        *,
         name: str,
         pattern: str,
+        *,
         fields: Optional[Dict[str, PandasType]] = None,
         example: Optional[StrOrPath] = None,
         label: Optional[str] = None,

@@ -1,4 +1,3 @@
-import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List, Optional, Type
@@ -6,13 +5,17 @@ from typing import List, Optional, Type
 from omegaconf import DictConfig
 
 from bids2table import Key, StrOrPath
+from bids2table._utils import Catalog
 
 __all__ = [
+    "INDEXER_CATALOG",
     "Indexer",
-    "INDEXER_REGISTRY",
     "register_indexer",
-    "get_indexer",
 ]
+
+# Adapted this logic for registering plugins from VISSL:
+# https://github.com/facebookresearch/vissl/blob/main/vissl/models/heads/__init__.py
+INDEXER_CATALOG: Catalog[Type["Indexer"]] = Catalog()
 
 
 class Indexer(ABC):
@@ -51,11 +54,6 @@ class Indexer(ABC):
         return cls(**cfg)
 
 
-# Copied this logic for registering plugins from VISSL:
-# https://github.com/facebookresearch/vissl/blob/main/vissl/models/heads/__init__.py
-INDEXER_REGISTRY = {}
-
-
 def register_indexer(name: str):
     """
     A decorator to register a type of ``Indexer``.
@@ -64,25 +62,10 @@ def register_indexer(name: str):
         @register_indexer("my_indexer")
         class MyIndexer(Indexer):
             ...
-
-    To get an ``Indexer`` from a configuration file, see :func:`get_indexer`.
     """
 
-    def register_indexer_cls(cls: Type[Indexer]) -> Type[Indexer]:
-        if name in INDEXER_REGISTRY:
-            logging.warning(
-                f"An indexer with name '{name}' is already registered; overwriting"
-            )
-        INDEXER_REGISTRY[name] = cls
+    def decorator(cls: Type[Indexer]) -> Type[Indexer]:
+        INDEXER_CATALOG.register(name, cls)
         return cls
 
-    return register_indexer_cls
-
-
-def get_indexer(name: str) -> Type[Indexer]:
-    """
-    Get the ``Indexer`` class referred to by ``name``.
-    """
-    if name not in INDEXER_REGISTRY:
-        raise KeyError(f"Indexer {name} is not registered")
-    return INDEXER_REGISTRY[name]
+    return decorator

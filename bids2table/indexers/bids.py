@@ -101,7 +101,7 @@ class BIDSEntity:
         return value
 
 
-@register_indexer("BIDSIndexer")
+@register_indexer("bids_indexer")
 class BIDSIndexer(Indexer):
     """
     Indexer for a `BIDS`_ analysis directory.
