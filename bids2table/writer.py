@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from typing import Optional, Union
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 from pyarrow import parquet as pq
@@ -13,14 +14,14 @@ from bids2table.schema import Schema
 TableBatch = Union[pd.DataFrame, pa.Table]
 
 
-class ParquetWriter:
+class BufferedParquetWriter:
     """
     Write a stream of pandas ``DataFrame`` or `PyArrow`_ ``Table`` batches to a parquet
     file using `PyArrow`_
 
     Example::
 
-        with ParquetWriter("table") as writer:
+        with BufferedParquetWriter("table") as writer:
             for batch in batches:
                 writer.write(batch)
 
@@ -43,24 +44,19 @@ class ParquetWriter:
         self,
         prefix: str,
         coerce: bool = False,
-        buffer_size: Union[str, int] = "16 MiB",
         partition_size: Union[str, int] = "64 MiB",
     ):
         self.prefix = prefix
         self.coerce = coerce
-        if isinstance(buffer_size, str):
-            buffer_size = parse_size(buffer_size)
         if isinstance(partition_size, str):
             partition_size = parse_size(partition_size)
-        self.buffer_size = buffer_size
         self.partition_size = partition_size
 
         self._schema: Optional[Schema] = None
         self._table: Optional[pa.Table] = None
-        self._stream: Optional[pq.ParquetWriter] = None
         self._part = 0
+        self._part_batch_start = 0
         self._batch_count = 0
-        self._bytes_written = 0
 
     def write(self, batch: TableBatch):
         """
@@ -69,18 +65,15 @@ class ParquetWriter:
         """
         if self._schema is None:
             self._init_schema(batch)
-        if self._stream is None:
-            self._init_stream()
         batch = self._to_pyarrow(batch)
         if self._table is None:
             self._table = batch
         else:
             self._table = pa.concat_tables([self._table, batch])
-        if self._table.get_total_buffer_size() > self.buffer_size:
-            self._flush()
-        if self._bytes_written > self.partition_size:
-            self.close()
         self._batch_count += 1
+
+        if self._table.get_total_buffer_size() > self.partition_size:
+            self.flush()
 
     def _init_schema(self, first_batch: TableBatch):
         """
@@ -91,16 +84,16 @@ class ParquetWriter:
         else:
             self._schema = Schema.from_pyarrow(table=first_batch)
 
-    def _init_stream(self):
-        # TODO: expose kwargs as config options
-        self._stream = pq.ParquetWriter(
-            self._temp_path(), schema=self._schema.to_pyarrow()
-        )
-
-    def _path(self) -> str:
+    def path(self) -> str:
+        """
+        Return the path for the current partition.
+        """
         return f"{self.prefix}-{self._part:04d}.parquet"
 
     def _temp_path(self) -> str:
+        """
+        Return the current temporary path.
+        """
         path = Path(self.prefix)
         temp_path = str(path.parent / f".tmp-{path.name}-{self._part:04d}.parquet")
         return temp_path
@@ -122,43 +115,29 @@ class ParquetWriter:
             batch = batch.replace_schema_metadata(self._schema.metadata)
         return batch
 
-    def _flush(self):
+    def flush(self):
         """
-        Flush the internal buffer.
+        Flush the table buffer.
         """
         if self._table is not None:
-            self._bytes_written += self._table.get_total_buffer_size()
+            table_bytes = self._table.get_total_buffer_size()
             logging.info(
                 "Flushing to partition\n"
-                f"\tpath: {self._path()}\n"
-                f"\tbatches: {self._batch_count}\n"
-                f"\tMB: {self._bytes_written / 1e6}"
+                f"\tbatches: [{self._part_batch_start}, {self._batch_count}]\n"
+                f"\tMB: {table_bytes / 1e6}\n"
+                f"\tpath: {self.path()}"
             )
-            self._stream.write_table(
-                self._table, row_group_size=self._table.get_total_buffer_size()
+            row_group_size = int(np.ceil(table_bytes / 1024**2)) * 1024**2
+            pq.write_table(
+                self._table, self._temp_path(), row_group_size=row_group_size
             )
+            os.rename(self._temp_path(), self.path())
             self._table = None
-
-    def close(self):
-        """
-        Close the stream.
-        """
-        if self._stream is not None:
-            self._flush()
-            logging.info(
-                "Closing partition\n"
-                f"\tpath: {self._path()}\n"
-                f"\tbatches: {self._batch_count}\n"
-                f"\tMB: {self._bytes_written / 1e6}"
-            )
-            self._stream.close()
-            self._stream = None
-            os.rename(self._temp_path(), self._path())
-            self._bytes_written = 0
             self._part += 1
+            self._part_batch_start = self._batch_count
 
-    def __enter__(self) -> "ParquetWriter":
+    def __enter__(self) -> "BufferedParquetWriter":
         return self
 
     def __exit__(self):
-        self.close()
+        self.flush()
