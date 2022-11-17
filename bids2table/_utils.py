@@ -1,11 +1,16 @@
 import fnmatch
+import importlib
+import importlib.util
 import logging
+import os
 import re
+import sys
+import tempfile
+import time
+from contextlib import contextmanager
 from glob import glob
 from pathlib import Path
-from typing import Dict, Generic, Iterable, List, Optional, TypeVar
-
-import pandas as pd
+from typing import Dict, Generic, Iterable, List, Optional, TypeVar, Union
 
 T = TypeVar("T")
 
@@ -16,7 +21,7 @@ class Catalog(Generic[T]):
     """
 
     def __init__(self):
-        self._catalog: Dict[str, T]
+        self._catalog: Dict[str, T] = {}
 
     def has(self, key: str) -> bool:
         """
@@ -60,6 +65,70 @@ class Catalog(Generic[T]):
         return [self._catalog[k] for k in matching_keys]
 
 
+@contextmanager
+def atomicopen(path: Union[str, Path], mode: str = "w", **kwargs):
+    """
+    Open a file for "atomic" writing. Only write modes are supported.
+    """
+    if mode[0] not in {"w", "x"}:
+        raise ValueError(f"Only write modes supported; not '{mode}'")
+    path = Path(path)
+    file = tempfile.NamedTemporaryFile(
+        mode=mode,
+        dir=path.parent,
+        prefix=".tmp-",
+        suffix=path.suffix,
+        delete=False,
+        **kwargs,
+    )
+    try:
+        yield file
+    except Exception as exc:
+        file.close()
+        os.remove(file.name)
+        raise exc
+    else:
+        file.close()
+        os.replace(file.name, path)
+
+
+@contextmanager
+def waitopen(
+    path: Union[str, Path],
+    mode: str = "r",
+    timeout: Optional[float] = None,
+    delay: float = 0.1,
+    **kwargs,
+):
+    """
+    Wait for a file to exist before trying to open. Only read modes are supported.
+    """
+    if mode[0] != "r":
+        raise ValueError(f"Only read modes supported; not '{mode}'")
+    wait_for_file(path, timeout=timeout, delay=delay)
+    file = open(path, mode=mode, **kwargs)
+    try:
+        yield file
+    finally:
+        file.close()
+
+
+def wait_for_file(
+    path: Union[str, Path],
+    timeout: Optional[float] = None,
+    delay: float = 0.1,
+):
+    """
+    Wait for a file to exist.
+    """
+    path = Path(path)
+    start = time.monotonic()
+    while not path.exists():
+        time.sleep(delay)
+        if timeout and time.monotonic() > start + timeout:
+            raise RuntimeError(f"Timed out waiting for file {path}")
+
+
 def set_iou(a: Iterable, b: Iterable) -> float:
     """
     Compute the intersection-over-union, i.e. Jaccard index, between two sets.
@@ -78,32 +147,23 @@ def set_overlap(a: Iterable, b: Iterable) -> float:
     return len(aintb) / min(len(a), len(b), 1)
 
 
-def expand_paths(paths: List[str], recursive: bool = False) -> pd.Series:
+def expand_paths(paths: Iterable[str], recursive: bool = True) -> List[str]:
     """
-    Expand any glob patterns in `paths` and make paths absolute. Return expanded paths
-    as a pandas `Series`.
+    Expand any glob patterns in ``paths`` and make paths absolute.
     """
 
-    def abspath(path):
+    def abspath(path: str) -> str:
         return str(Path(path).absolute())
 
+    special_chars = set("[]*?")
     expanded_paths = []
     for path in paths:
-        if set(path).isdisjoint("[]*?"):
+        if special_chars.isdisjoint(path):
             expanded_paths.append(abspath(path))
         else:
             matched_paths = sorted(glob(path, recursive=recursive))
             expanded_paths.extend(map(abspath, matched_paths))
-
-    expanded_paths = pd.Series(expanded_paths, dtype=pd.StringDtype)
     return expanded_paths
-
-
-def format_task_id(task_id: int) -> str:
-    """
-    Format a task ID as a zero-padded string.
-    """
-    return f"{task_id:05d}"
 
 
 def parse_size(size: str) -> int:
@@ -133,3 +193,21 @@ def parse_size(size: str) -> int:
     unit = match.group(2)
     bytesize = int(num * units_lower[unit.lower()])
     return bytesize
+
+
+def import_module_from_path(path: Union[str, Path], append_sys_path: bool = True):
+    """
+    Import a module from a file or directory path.
+    """
+    path = Path(path).absolute()
+    parent = path.parent
+    if append_sys_path and str(parent) not in sys.path:
+        sys.path.append(str(parent))
+
+    module_name = path.stem
+    try:
+        if module_name not in sys.modules:
+            logging.info("Importing %s from %s", module_name, path)
+            importlib.import_module(module_name)
+    except ModuleNotFoundError:
+        logging.warning("Unable to import %s from %s", module_name, path)

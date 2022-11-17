@@ -24,17 +24,6 @@ class Handler:
     ``dict`` record mapping column names to data values.
 
     TODO:
-        [x] Make pattern internal to the handler. These logically go together. I think
-            the user would like to define them in the same place.
-        [x] initializing schema from an example
-            - I think this would be a convenient feature. Leverages pandas type
-              inference, which is pretty good, to automate tedious schema definition.
-              Makes it easy to update schemas in response to upstream changes (just
-              update the example). Also should help avoid typos.
-
-              Not to mention it makes it easy for users to do the right thing and
-              include types up front. This way we can fully avoid the issue of varying
-              types between batches.
         [ ] retry logic?
     """
 
@@ -72,7 +61,7 @@ class Handler:
             raise ValueError("One of 'fields' or 'example' is required")
 
         if register:
-            HANDLER_CATALOG.register(self.name, self)
+            self.register()
 
     def __call__(self, path: StrOrPath) -> Optional[RecordDict]:
         record = self.loader(path)
@@ -86,6 +75,12 @@ class Handler:
                     f"\thandler: {self.name}"
                 )
         return record
+
+    def register(self):
+        """
+        Register the handler in the shared catalog.
+        """
+        HANDLER_CATALOG.register(self.name, self)
 
     @classmethod
     def load_example(cls, loader: Loader, path: StrOrPath) -> Optional[RecordDict]:

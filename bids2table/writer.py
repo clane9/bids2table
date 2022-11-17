@@ -1,14 +1,12 @@
 import logging
-import os
 from pathlib import Path
 from typing import Optional, Union
 
-import numpy as np
 import pandas as pd
 import pyarrow as pa
 from pyarrow import parquet as pq
 
-from bids2table._utils import parse_size
+from bids2table._utils import atomicopen, parse_size
 from bids2table.schema import Schema
 
 TableBatch = Union[pd.DataFrame, pa.Table]
@@ -48,9 +46,12 @@ class BufferedParquetWriter:
     ):
         self.prefix = prefix
         self.coerce = coerce
-        if isinstance(partition_size, str):
-            partition_size = parse_size(partition_size)
         self.partition_size = partition_size
+
+        if isinstance(partition_size, str):
+            self._partition_size_bytes = parse_size(partition_size)
+        else:
+            self._partition_size_bytes = partition_size
 
         self._schema: Optional[Schema] = None
         self._table: Optional[pa.Table] = None
@@ -58,10 +59,10 @@ class BufferedParquetWriter:
         self._part_batch_start = 0
         self._batch_count = 0
 
-    def write(self, batch: TableBatch):
+    def write(self, batch: TableBatch) -> str:
         """
         Write a batch to the stream. If this is the first batch, the schema and stream
-        will be initialized.
+        will be initialized. Returns the path to the partition containing this batch.
         """
         if self._schema is None:
             self._init_schema(batch)
@@ -72,8 +73,10 @@ class BufferedParquetWriter:
             self._table = pa.concat_tables([self._table, batch])
         self._batch_count += 1
 
-        if self._table.get_total_buffer_size() > self.partition_size:
+        partition = self.path()
+        if self._table.get_total_buffer_size() > self._partition_size_bytes:
             self.flush()
+        return partition
 
     def _init_schema(self, first_batch: TableBatch):
         """
@@ -89,14 +92,6 @@ class BufferedParquetWriter:
         Return the path for the current partition.
         """
         return f"{self.prefix}-{self._part:04d}.parquet"
-
-    def _temp_path(self) -> str:
-        """
-        Return the current temporary path.
-        """
-        path = Path(self.prefix)
-        temp_path = str(path.parent / f".tmp-{path.name}-{self._part:04d}.parquet")
-        return temp_path
 
     def _to_pyarrow(self, batch: TableBatch) -> pa.Table:
         """
@@ -120,6 +115,9 @@ class BufferedParquetWriter:
         Flush the table buffer.
         """
         if self._table is not None:
+            parent = Path(self.path()).parent
+            parent.mkdir(parents=True, exist_ok=True)
+
             table_bytes = self._table.get_total_buffer_size()
             logging.info(
                 "Flushing to partition\n"
@@ -127,11 +125,13 @@ class BufferedParquetWriter:
                 f"\tMB: {table_bytes / 1e6}\n"
                 f"\tpath: {self.path()}"
             )
-            row_group_size = int(np.ceil(table_bytes / 1024**2)) * 1024**2
-            pq.write_table(
-                self._table, self._temp_path(), row_group_size=row_group_size
-            )
-            os.rename(self._temp_path(), self.path())
+
+            with atomicopen(self.path(), "wb") as f:
+                pq.write_table(
+                    self._table,
+                    f,
+                    row_group_size=2 * self._partition_size_bytes,
+                )
             self._table = None
             self._part += 1
             self._part_batch_start = self._batch_count
