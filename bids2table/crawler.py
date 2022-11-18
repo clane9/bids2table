@@ -15,11 +15,15 @@ from bids2table.schema import Schema
 from bids2table.table import Table
 
 
-class HandlingFailure(NamedTuple):
-    dirpath: str
+@dataclass
+class HandlingFailure:
     path: str
     pattern: str
     handler: str
+    exception: str
+
+    def to_dict(self):
+        return self.__dict__.copy()
 
 
 class MatchResult(NamedTuple):
@@ -31,11 +35,11 @@ class MatchResult(NamedTuple):
 @dataclass
 class CrawlCounts:
     count: int
-    errors: int
+    error_count: int
 
     @property
     def error_rate(self) -> float:
-        return self.errors / self.count
+        return self.error_count / self.count
 
 
 class Crawler:
@@ -148,7 +152,7 @@ class Crawler:
         try:
             record = handler(path)
             err = None
-        except Exception:
+        except Exception as exc:
             # TODO: in this case how to we re-run just the files that failed?
             # In general, robustly being able to update the table is a critical
             # feature I guess could re-try just the subjects with failures.
@@ -160,9 +164,7 @@ class Crawler:
                 f"\thandler: {handler.name}\n\n" + traceback.format_exc() + "\n"
             )
             record = None
-            err = HandlingFailure(
-                str(indexer.root), path, handler.pattern, handler.name
-            )
+            err = HandlingFailure(path, handler.pattern, handler.name, repr(exc))
 
         data = None if record is None else (key, record)
         return data, err

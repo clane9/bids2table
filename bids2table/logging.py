@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from bids2table import StrOrPath
+from bids2table.crawler import HandlingFailure
 from bids2table.engine import _format_task_id
 from bids2table.schema import Schema
 
@@ -17,7 +18,7 @@ __all__ = ["ProcessedLog"]
 
 
 class ProcessedLog:
-    PREFIX = "_processed"
+    PREFIX = "_log"
     SCHEMA = Schema(
         {
             "timestamp": np.datetime64,
@@ -28,7 +29,7 @@ class ProcessedLog:
             #   - for now don't worry about it
             "dir": str,
             "count": int,
-            "errors": int,
+            "error_count": int,
             "error_rate": float,
             "partitions": object,
         }
@@ -43,6 +44,7 @@ class ProcessedLog:
         """
         Lazy processed log dataframe.
         """
+        # TODO: optionally join with errors?
         if self._df is None:
             self._df = self._load(self.db_dir)
         return self._df
@@ -58,12 +60,13 @@ class ProcessedLog:
             df = self.SCHEMA.empty()
         else:
             batches = []
-            for path in sorted(log_path.glob("**/*.json")):
+            for path in sorted(log_path.glob("**/*.log.json")):
                 batches.append(pd.read_json(path, lines=True))
             if len(batches) == 0:
                 df = self.SCHEMA.empty()
             else:
                 df = pd.concat(batches, ignore_index=True)
+                df = self.SCHEMA.cast(df)
                 df = df.drop_duplicates(subset="dir", keep="last")
         return df
 
@@ -73,9 +76,10 @@ class ProcessedLog:
         task_id: int,
         dirpath: StrOrPath,
         count: int,
-        errors: int,
+        error_count: int,
         error_rate: float,
         partitions: List[str],
+        errors: Optional[List[HandlingFailure]],
     ):
         """
         Append a record to the processed log table.
@@ -88,16 +92,27 @@ class ProcessedLog:
             "task_id": task_id,
             "dir": dirpath,
             "count": count,
-            "errors": errors,
+            "error_count": error_count,
             "error_rate": error_rate,
             "partitions": partitions,
         }
         log_dir = self.db_dir / self.PREFIX / run_id
         if not log_dir.exists():
             log_dir.mkdir(parents=True)
-        json_path = log_dir / (_format_task_id(task_id) + ".json")
+        json_path = log_dir / (_format_task_id(task_id) + ".log.json")
         with open(json_path, "a") as f:
             print(json.dumps(record), file=f)
+
+        if errors:
+            err_record = {
+                "run_id": run_id,
+                "task_id": task_id,
+                "dir": dirpath,
+                "errors": [err.to_dict() for err in errors],
+            }
+            err_json_path = log_dir / (_format_task_id(task_id) + ".err.json")
+            with open(err_json_path, "a") as f:
+                print(json.dumps(err_record), file=f)
 
     def filter_paths(
         self, paths: np.ndarray, error_rate_threshold: Optional[float] = None

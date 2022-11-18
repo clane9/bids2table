@@ -122,11 +122,10 @@ def _generate_tables(
     try:
         for path in paths:
             logging.info(f"Starting a directory crawl:\n\t{path}")
-            # TODO: do something with errs
             tables, errs, counts = crawler(path)
             logging.info(
                 f"Finished crawl:\n\tpath: {path}\n"
-                f"\thandle count: {counts.count}\terrors: {counts.errors}\t"
+                f"\thandle count: {counts.count}\terrors: {counts.error_count}\t"
                 f"error_rate: {counts.error_rate:.3f}"
             )
 
@@ -140,9 +139,10 @@ def _generate_tables(
                 task_id,
                 path,
                 counts.count,
-                counts.errors,
+                counts.error_count,
                 counts.error_rate,
                 partitions,
+                errors=errs,
             )
 
         # TODO: summary stats? throughput?

@@ -48,7 +48,7 @@ class Schema:
 
     def empty(self) -> pd.DataFrame:
         df = pd.DataFrame(columns=self.columns())
-        df = df.astype(self.fields)
+        df = self.cast(df)
         return df
 
     def to_pyarrow(self) -> pa.Schema:
@@ -62,20 +62,28 @@ class Schema:
         """
         return (df.dtypes == self.dtypes()).all()
 
-    def coerce(self, df: pd.DataFrame, inplace: bool = False) -> pd.DataFrame:
+    def cast(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Cast a ``DataFrame`` to match the schema's types.
+
+        Unlike ``coerce``, this will raise an error if ``df`` does not match the
+        schema's columns.
+        """
+        return df.astype(self.fields)
+
+    def coerce(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Coerce a ``DataFrame`` to match the schema.
         """
         if self.matches(df):
             return df
-        if not inplace:
-            df = df.copy()
+        df = df.copy()
         columns = np.array(self.columns())
         missing_cols = np.setdiff1d(columns, df.columns)
         if len(missing_cols) > 0:
             df.loc[:, missing_cols] = None
         df = df.loc[:, columns]
-        df = df.astype(self.fields)
+        df = self.cast(df)
         return df
 
     @classmethod
