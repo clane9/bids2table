@@ -1,4 +1,5 @@
 import logging
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional, Union
 
@@ -55,6 +56,8 @@ class BufferedParquetWriter:
 
         self._schema: Optional[Schema] = None
         self._table: Optional[pa.Table] = None
+        self._pool = ThreadPoolExecutor(max_workers=1)
+        self._future: Optional[Future] = None
         self._part = 0
         self._part_batch_start = 0
         self._batch_count = 0
@@ -115,13 +118,17 @@ class BufferedParquetWriter:
             batch = batch.replace_schema_metadata(self._schema.metadata)
         return batch
 
-    def flush(self):
+    def flush(self, blocking: bool = False):
         """
         Flush the table buffer.
         """
         if self._table is not None:
             parent = Path(self.path()).parent
             parent.mkdir(parents=True, exist_ok=True)
+
+            if self._future is not None and self._future.running():
+                logging.info("Waiting for previous partition to finish writing")
+                self._future.result()
 
             table_bytes = self._table.get_total_buffer_size()
             logging.info(
@@ -130,16 +137,24 @@ class BufferedParquetWriter:
                 f"\tMB: {table_bytes / 1e6}\n"
                 f"\tpath: {self.path()}"
             )
+            self._future = self._pool.submit(
+                self._flush_task,
+                self._table,
+                self.path(),
+                2 * self._partition_size_bytes,
+            )
 
-            with atomicopen(self.path(), "wb") as f:
-                pq.write_table(
-                    self._table,
-                    f,
-                    row_group_size=2 * self._partition_size_bytes,
-                )
             self._table = None
             self._part += 1
             self._part_batch_start = self._batch_count
+
+            if blocking:
+                self._future.result()
+
+    @staticmethod
+    def _flush_task(table: pa.Table, path: str, row_group_size: int):
+        with atomicopen(path, "wb") as f:
+            pq.write_table(table, f, row_group_size=row_group_size)
 
     def __enter__(self) -> "BufferedParquetWriter":
         return self

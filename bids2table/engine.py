@@ -150,7 +150,7 @@ def _generate_tables(
     finally:
         # TODO: might not want to flush last if exiting on exception.
         for name, writer in writers_map.items():
-            writer.flush()
+            writer.flush(blocking=True)
 
 
 def _load_paths(cfg: DictConfig) -> np.ndarray:
