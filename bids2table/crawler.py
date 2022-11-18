@@ -2,6 +2,7 @@ import logging
 import os
 import traceback
 from collections import defaultdict
+from dataclasses import dataclass
 from multiprocessing.pool import ThreadPool
 from typing import Dict, Iterator, List, NamedTuple, Optional, Tuple
 
@@ -27,9 +28,14 @@ class MatchResult(NamedTuple):
     handler: Handler
 
 
-class CrawlCounts(NamedTuple):
-    total: int
+@dataclass
+class CrawlCounts:
+    count: int
     errors: int
+
+    @property
+    def error_rate(self) -> float:
+        return self.errors / self.count
 
 
 class Crawler:

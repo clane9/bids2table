@@ -1,11 +1,9 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional, Type
-
-from omegaconf import DictConfig
+from typing import Any, Dict, List, Optional, Type
 
 from bids2table import Key, StrOrPath
-from bids2table._utils import Catalog
+from bids2table.utils import Catalog
 
 __all__ = [
     "INDEXER_CATALOG",
@@ -50,7 +48,7 @@ class Indexer(ABC):
         raise NotImplementedError
 
     @classmethod
-    def from_config(cls, cfg: DictConfig) -> "Indexer":
+    def from_config(cls, cfg: Dict[str, Any]) -> "Indexer":
         return cls(**cfg)
 
 

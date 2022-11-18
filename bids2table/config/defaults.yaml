@@ -1,11 +1,27 @@
 defaults:
   - _self_
 
-# Top-level database directory.
-db_dir: ???
+# Output config
+output:
+  # Top-level database directory. Table partitions are organized as:
+  #   {db_dir} / {table_name} / {run_id} / {task_id} / {part}.parquet
+  db_dir: ???
+  # Logging directory, shared across runs. Individual run logs go in a subdirectory
+  # according to run_id.
+  log_dir: ???
+  # Unique ID for the current run
+  run_id: ???
 
-# Log directory for this run.
-log_dir: ???
+# Parallel worker config
+workers:
+  # Session directories are assigned to task workers to process based on their ID.
+  # TODO: It might be worth inferring these from slurm. But then that might be a bit too
+  # much hiding stuff from the user.
+  task_id: 0
+  # Total number of task workers.
+  num_tasks: 1
+  # Time in seconds one process will wait at a synchronization point.
+  sync_timeout: 20.0
 
 paths:
   # List of session directories to process. Can be one of the following:
@@ -73,16 +89,8 @@ writer:
 # List of python modules to import for e.g. Handler and Indexer definitions.
 include_modules: []
 
-# Parallel worker config
-workers:
-  # Session directories are assigned to task workers to process based on their ID.
-  # TODO: It might be worth inferring these from slurm. But then that might be a bit too
-  # much hiding stuff from the user.
-  task_id: 0
-  # Total number of task workers.
-  num_tasks: 1
-  # Time in seconds one process will wait at a synchronization point.
-  sync_timeout: 20.0
-
 # Configure the processing run but don't run anything
 dry_run: false
+
+# Logging level
+log_level: INFO

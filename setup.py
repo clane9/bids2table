@@ -26,6 +26,12 @@ setup(
     packages=["bids2table"],
     include_package_data=True,
     python_requires=">=3.7",
-    install_requires=[],
+    install_requires=[
+        "hydra-core",
+        "numpy",
+        "pandas>=1.2.0",
+        "pyarrow",
+        "tabulate",
+    ],
     extras_require={},
 )

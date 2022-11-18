@@ -4,9 +4,9 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple
 
 from bids2table import RecordDict, StrOrPath, find_file
-from bids2table._utils import Catalog, set_overlap
 from bids2table.loaders import Loader
 from bids2table.schema import PandasType, Schema
+from bids2table.utils import Catalog, set_overlap
 
 __all__ = [
     "HANDLER_CATALOG",

@@ -6,8 +6,8 @@ import pandas as pd
 import pyarrow as pa
 from pyarrow import parquet as pq
 
-from bids2table._utils import atomicopen, parse_size
 from bids2table.schema import Schema
+from bids2table.utils import atomicopen, parse_size
 
 TableBatch = Union[pd.DataFrame, pa.Table]
 
@@ -91,7 +91,12 @@ class BufferedParquetWriter:
         """
         Return the path for the current partition.
         """
-        return f"{self.prefix}-{self._part:04d}.parquet"
+        prefix = Path(self.prefix)
+        if prefix.is_dir():
+            path = str(prefix / f"{self._part:04d}.parquet")
+        else:
+            path = f"{self.prefix}-{self._part:04d}.parquet"
+        return path
 
     def _to_pyarrow(self, batch: TableBatch) -> pa.Table:
         """
