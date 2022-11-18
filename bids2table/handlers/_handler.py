@@ -1,12 +1,13 @@
 import logging
+from collections import defaultdict
 from importlib import resources
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple
+from typing import Any, Dict, Iterator, List, NamedTuple, Optional
 
 from bids2table import RecordDict, StrOrPath, find_file
 from bids2table.loaders import Loader
 from bids2table.schema import PandasType, Schema
-from bids2table.utils import Catalog, set_overlap
+from bids2table.utils import Catalog, combined_suffix, set_overlap
 
 __all__ = [
     "HANDLER_CATALOG",
@@ -41,6 +42,11 @@ class Handler:
         convert_dtypes: bool = True,
         register: bool = True,
     ):
+        if pattern[-1] in "]*?":
+            raise ValueError(
+                f"Pattern '{pattern}' should not end in a special character"
+            )
+
         self.loader = loader
         self.name = name
         self.pattern = pattern
@@ -113,11 +119,15 @@ class HandlerLUT:
     Lookup table mapping glob file patterns to handlers.
     """
 
-    def __init__(
-        self,
-        handlers_map: Dict[str, List[Handler]],
-    ):
+    def __init__(self, handlers_map: Dict[str, List[Handler]]):
         self.handlers_map = handlers_map
+
+        # Organize handlers by suffix for faster lookup.
+        self._handlers_by_suffix: Dict[str, List[LookupResult]] = defaultdict(list)
+        for group, handlers in handlers_map.items():
+            for handler in handlers:
+                suffix = combined_suffix(handler.pattern)
+                self._handlers_by_suffix[suffix].append(LookupResult(group, handler))
 
     def lookup(self, path: StrOrPath) -> Iterator[LookupResult]:
         """
@@ -125,20 +135,11 @@ class HandlerLUT:
         of ``(group, handler)``.
         """
         path = Path(path)
-        # TODO: this will be expensive if you have a lot of files and handlers. One way
-        # to save work is to group handlers by extenstion, and then match a file to the
-        # unique extension. Most files will likely match nothing.
-        for group, handler in self._iterate():
+        suffix = combined_suffix(path)
+        for result in self._handlers_by_suffix[suffix]:
             # TODO: could consider generalizing this pattern matching to:
             #   - tuples of globs
             #   - arbitrary regex
             # But better to keep things simple for now.
-            if path.match(handler.pattern):
-                yield LookupResult(group, handler)
-
-    def _iterate(self) -> Iterator[Tuple[str, Handler]]:
-        return (
-            (group, handler)
-            for group, handlers in self.handlers_map.items()
-            for handler in handlers
-        )
+            if path.match(result.handler.pattern):
+                yield result

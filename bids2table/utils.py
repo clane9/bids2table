@@ -232,3 +232,11 @@ def import_module_from_path(path: Union[str, Path], append_sys_path: bool = True
             importlib.import_module(module_name)
     except ModuleNotFoundError:
         logging.warning("Unable to import %s from %s", module_name, path)
+
+
+def combined_suffix(path: Union[str, Path]) -> str:
+    """
+    Return the combined suffix(es) of a path. E.g. ``'library.tar.gz'`` ->
+    ``'.tar.gz'``.
+    """
+    return "".join(Path(path).suffixes)
