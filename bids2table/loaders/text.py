@@ -26,8 +26,11 @@ def load_single_row_tsv(
     """
     Load a data record represented as a single row tsv file. If ``deserialize`` is
     ``True``, will attempt to deserialize each string entry using ``ast.literal_eval``.
-
     ``**kwargs`` are pased through to ``pandas.read_csv``.
+
+    .. warning::
+        numeric-like strings, strings with quotes or back slashes, and other corner
+        cases are likely not handled correctly.
     """
     df = pd.read_csv(path, sep=sep, **kwargs)
     record = df.to_dict(orient="records")

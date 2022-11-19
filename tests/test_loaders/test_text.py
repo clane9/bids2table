@@ -97,4 +97,4 @@ def test_load_array_tsv(array_tsv: Path, random_array: np.ndarray):
 
 
 if __name__ == "__main__":
-    pytest.main()
+    pytest.main([__file__])
