@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -6,10 +6,7 @@ import pyarrow as pa
 import pytest
 from pytest import FixtureRequest
 
-from bids2table import RecordDict
-from bids2table.schema import Fields, Schema
-
-TableType = Union[List[RecordDict], pd.DataFrame, pa.Table]
+from bids2table.schema import Fields, Schema, TableLike
 
 
 @pytest.fixture(params=["prim", "prim_str", "np", "np_str", "pd", "pd_str", "convert"])
@@ -56,21 +53,32 @@ def fields(field_type: str) -> Fields:
     return _fields(field_type)
 
 
-@pytest.fixture(params=["records", "pandas", "pyarrow"])
+@pytest.fixture(params=["record", "records", "pandas", "pyarrow"])
 def table_type(request: FixtureRequest) -> str:
     return request.param
 
 
-def _table_and_schemas(_table_type: str) -> Tuple[TableType, Schema, Schema]:
+def _table_and_schemas(_table_type: str) -> Tuple[TableLike, Schema, Schema, Schema]:
     schema = Schema({"a": "object", "b": "int", "c": "float", "d": "object"})
     schema_convert = Schema(
         {"a": "string", "b": "Int64", "c": "Float64", "d": "object"}
+    )
+    schema_coerce = Schema(
+        # Includes:
+        #   - reordering
+        #   - type conversion (int -> Int64)
+        #   - reduced precision (float -> float16)
+        #   - new columns
+        {"c": "float16", "b": "Int64", "d": "object", "e": "datetime64[ns]"}
     )
     records = [
         {"a": "abc", "b": 123, "c": 9.99, "d": np.zeros(3)},
         {"a": "def", "b": 456, "c": 1.11, "d": np.ones(3)},
     ]
-    if _table_type == "records":
+    table: TableLike
+    if _table_type == "record":
+        table = records[0]
+    elif _table_type == "records":
         table = records
     elif _table_type == "pandas":
         table = pd.DataFrame.from_records(records)
@@ -78,11 +86,11 @@ def _table_and_schemas(_table_type: str) -> Tuple[TableType, Schema, Schema]:
         table = pa.Table.from_pylist(records)
     else:
         raise NotImplementedError(f"table_type '{_table_type}' not implemented")
-    return table, schema, schema_convert
+    return table, schema, schema_convert, schema_coerce
 
 
 @pytest.fixture
-def table_and_schemas(table_type: str) -> Tuple[TableType, Schema, Schema]:
+def table_and_schemas(table_type: str) -> Tuple[TableLike, Schema, Schema, Schema]:
     return _table_and_schemas(table_type)
 
 
@@ -116,16 +124,17 @@ def test_schema_conversion():
 
 @pytest.mark.parametrize("convert", [False, True])
 def test_schema_constructors(
-    table_and_schemas: Tuple[TableType, Schema, Schema], convert: bool
+    table_and_schemas: Tuple[TableLike, Schema, Schema, Schema], convert: bool
 ):
-    table, schema, schema_convert = table_and_schemas
+    table, schema, schema_convert, _ = table_and_schemas
     schema = schema_convert if convert else schema
-    if isinstance(table, list):
+    schema3 = None
+    if isinstance(table, dict):
+        schema2 = Schema.from_record(table, convert=convert)
+    elif isinstance(table, list):
         schema2 = Schema.from_records(table, convert=convert)
-        schema3 = Schema.from_records(table[0], convert=convert)
     elif isinstance(table, pd.DataFrame):
         schema2 = Schema.from_pandas(table, convert=convert)
-        schema3 = None
     elif isinstance(table, pa.Table):
         schema2 = Schema.from_pyarrow(table=table, convert=convert)
         schema3 = Schema.from_pyarrow(schema=table.schema, convert=convert)
@@ -135,23 +144,27 @@ def test_schema_constructors(
     assert schema3 is None or schema.matches(schema3)
 
 
-def test_schema_matches(table_and_schemas: Tuple[TableType, Schema, Schema]):
-    table, schema, _ = table_and_schemas
+def test_schema_matches(table_and_schemas: Tuple[TableLike, Schema, Schema, Schema]):
+    table, schema, schema_convert, schema_coerce = table_and_schemas
     assert schema.matches(table)
+    assert not schema_convert.matches(table)
+    assert schema_convert.matches(table, strict=False)
+    assert not schema_coerce.matches(table, strict=False)
     if isinstance(table, pa.Table):
         assert schema.matches(table.schema)
 
 
-def test_coerce():
-    # NOTE: extension dtypes are required to handle missing data
-    schema = Schema({"a": "string", "b": "Int32", "c": "Float32", "d": "object"})
-    df = pd.DataFrame.from_records([{"d": np.ones(3), "c": 1, "a": None, "e": None}])
-    expected_df = pd.DataFrame.from_records(
-        [{"a": None, "b": None, "c": 1.0, "d": np.ones(3)}]
-    ).astype(schema.fields)
-    coerced_df = schema.coerce(df)
-    assert coerced_df.equals(expected_df)
-    assert schema.matches(coerced_df)
+def test_coerce(table_and_schemas: Tuple[TableLike, Schema, Schema, Schema]):
+    table, _, _, schema_coerce = table_and_schemas
+    coerced = schema_coerce.coerce(table)
+    assert schema_coerce.matches(coerced, strict=False)
+
+
+def test_to_pyarrow(fields: Fields):
+    schema = Schema(fields)
+    pa_schema = schema.to_pyarrow()
+    schema2 = Schema.from_pyarrow(schema=pa_schema)
+    assert schema.matches(schema2), "pyarrow roundtrip mismatch"
 
 
 @pytest.mark.parametrize("_field_type", ["prim", "pd"])
