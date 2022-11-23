@@ -1,12 +1,10 @@
 __version__ = "0.1.0"
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Union
 
 StrOrPath = Union[str, Path]
 RecordDict = Dict[str, Any]
-Index = Union[str, int]
-Key = Union[Index, Tuple[Index, ...]]
 
 PATH = ["."]
 

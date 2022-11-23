@@ -5,7 +5,9 @@ from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 
-from bids2table.loaders import RecordDict, StrOrPath
+from bids2table import RecordDict, StrOrPath
+
+from .registry import register_loader
 
 # Design considerations
 #   - short simple generic file loaders matching the `Loader` interface.
@@ -16,6 +18,7 @@ from bids2table.loaders import RecordDict, StrOrPath
 #         assume the input is valid and handle everything outside?
 
 
+@register_loader
 def load_single_row_tsv(
     path: StrOrPath,
     *,
@@ -32,7 +35,7 @@ def load_single_row_tsv(
         numeric-like strings, strings with quotes or back slashes, and other corner
         cases are likely not handled correctly.
     """
-    df = pd.read_csv(path, sep=sep, **kwargs)
+    df: pd.DataFrame = pd.read_csv(path, sep=sep, **kwargs)
     record = df.to_dict(orient="records")
 
     def loads(v):
@@ -68,6 +71,7 @@ def load_single_row_tsv(
 # able select handlers using a glob pattern.
 
 
+@register_loader
 def load_array_tsv(
     path: StrOrPath, *, sep: str = "\t", name: str = "array"
 ) -> Optional[Dict[str, np.ndarray]]:
@@ -80,6 +84,7 @@ def load_array_tsv(
     return record
 
 
+@register_loader
 def load_json_dict(path: StrOrPath, *, nested: bool = True) -> Optional[RecordDict]:
     """
     Load a json dictionary. If ``nested`` is ``False`` containers (i.e. lists, dicts)

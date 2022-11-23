@@ -1,18 +1,16 @@
 import logging
 import os
 import traceback
-from collections import defaultdict
 from dataclasses import dataclass
 from multiprocessing.pool import ThreadPool
-from typing import Dict, Iterator, List, NamedTuple, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import pyarrow as pa
 
-from bids2table import Key, RecordDict, StrOrPath
-from bids2table.handlers import Handler, HandlerLUT
+from bids2table import RecordDict, StrOrPath
+from bids2table.handlers import HandlerLUT, HandlerTuple
 from bids2table.indexers import Indexer
-from bids2table.schema import Schema
-from bids2table.table import Table
+from bids2table.table import IncrementalTable
 
 
 @dataclass
@@ -24,12 +22,6 @@ class HandlingFailure:
 
     def to_dict(self):
         return self.__dict__.copy()
-
-
-class MatchResult(NamedTuple):
-    path: str
-    group: str
-    handler: Handler
 
 
 @dataclass
@@ -45,8 +37,8 @@ class CrawlCounts:
 class Crawler:
     def __init__(
         self,
-        handlers_map: Dict[str, List[Handler]],
         indexers_map: Dict[str, Indexer],
+        handlers_map: Dict[str, List[HandlerTuple]],
         max_threads: Optional[int] = 8,
         max_failures: Optional[int] = None,
     ):
@@ -60,7 +52,10 @@ class Crawler:
             max_threads = min(32, (os.cpu_count() or 1) + 4)
         self.max_threads = max_threads
         self.max_failures = max_failures
-        self._handler_lut = HandlerLUT(handlers_map)
+
+        self._handler_lut = HandlerLUT(
+            [h for handlers in handlers_map.values() for h in handlers]
+        )
 
     def __call__(
         self, dirpath: StrOrPath
@@ -74,12 +69,8 @@ class Crawler:
             indexer.set_root(dirpath)
         taskfn = self._make_taskfn(self.indexers_map)
 
-        column_groups = self._column_groups_from_handlers(self.handlers_map)
         constants = {"_dir": str(dirpath)}
-        tables = {
-            group: Table(cg, self.indexers_map[group].index_names(), constants)
-            for group, cg in column_groups.items()
-        }
+        tables = self._new_tables(constants)
 
         count, err_count = 0, 0
         errors = []
@@ -91,10 +82,10 @@ class Crawler:
             for val in pool.imap_unordered(
                 taskfn, self._scan_for_matches(dirpath, self._handler_lut)
             ):
-                group, handler, data, err = val
+                handler, data, err = val
                 if data is not None:
                     key, record = data
-                    tables[group].put(key, handler.name, record)
+                    tables[handler.group].put(key, record, handler.label)
                     count += 1
                 if err is not None:
                     errors.append(err)
@@ -104,23 +95,40 @@ class Crawler:
                             f"Max number of failures {self.max_failures} exceeded"
                         )
 
-        tables = {group: table.to_pyarrow() for group, table in tables.items()}
+        tables = {group: table.as_table() for group, table in tables.items()}
         return tables, errors, CrawlCounts(count, err_count)
+
+    def _new_tables(
+        self,
+        constants: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, IncrementalTable]:
+        """
+        Create new ``IncrementalTables`` based on the defined indexer and handlers, and
+        optional additional constants.
+        """
+        tables = {}
+        for group, indexer in self.indexers_map.items():
+            handlers = self.handlers_map[group]
+            tables[group] = IncrementalTable(
+                index_schema=indexer.schema,
+                schema={h.label: h.handler.schema for h in handlers},
+                constants=constants,
+            )
+        return tables
 
     @staticmethod
     def _scan_for_matches(
         dirpath: StrOrPath,
         handler_lut: HandlerLUT,
-    ) -> Iterator[MatchResult]:
+    ) -> Iterator[Tuple[str, HandlerTuple]]:
         """
-        Scan a directory for files matching the handler patterns. Yields tuples of
-        ``(path, group, handler)```.
+        Scan a directory for files matching the handler patterns.
         """
         # TODO: A sub-class might generalize this to scan S3.
         with os.scandir(str(dirpath)) as it:
             for entry in it:
-                for group, handler in handler_lut.lookup(entry.path):
-                    yield MatchResult(entry.path, group, handler)
+                for handler in handler_lut.lookup(entry.path):
+                    yield entry.path, handler
 
     @staticmethod
     def _make_taskfn(indexers_map: Dict[str, Indexer]):
@@ -130,27 +138,40 @@ class Crawler:
         ``_process_one``.
         """
 
-        def taskfn(match: MatchResult):
-            path, group, handler = match
-            indexer = indexers_map[group]
+        def taskfn(match: Tuple[str, HandlerTuple]):
+            path, handler = match
+            indexer = indexers_map[handler.group]
             data, err = Crawler._process_one(indexer, path, handler)
-            return group, handler, data, err
+            return handler, data, err
 
         return taskfn
 
     @staticmethod
     def _process_one(
-        indexer: Indexer, path: str, handler: Handler
-    ) -> Tuple[Optional[Tuple[Key, RecordDict]], Optional[HandlingFailure]]:
+        indexer: Indexer, path: str, handler: HandlerTuple
+    ) -> Tuple[Optional[Tuple[RecordDict, RecordDict]], Optional[HandlingFailure]]:
         """
         Process a single file match with its corresponding handler.
         """
-        key = indexer.get_key(path)
+        try:
+            key = indexer(path)
+            err = None
+        except Exception as exc:
+            logging.warning(
+                "Indexer failed to process a file\n"
+                f"\tdirpath: {indexer.root}\n"
+                f"\tpath: {path}\n"
+                f"\tpattern: {handler.pattern}\n"
+                f"\tindexer: {indexer}\n\n" + traceback.format_exc() + "\n"
+            )
+            key = None
+            err = HandlingFailure(path, handler.pattern, repr(indexer), repr(exc))
+
         if key is None:
-            return None, None
+            return None, err
 
         try:
-            record = handler(path)
+            record = handler.handler(path)
             err = None
         except Exception as exc:
             # TODO: in this case how to we re-run just the files that failed?
@@ -161,28 +182,12 @@ class Crawler:
                 f"\tdirpath: {indexer.root}\n"
                 f"\tpath: {path}\n"
                 f"\tpattern: {handler.pattern}\n"
-                f"\thandler: {handler.name}\n\n" + traceback.format_exc() + "\n"
+                f"\thandler: {handler.handler}\n\n" + traceback.format_exc() + "\n"
             )
             record = None
-            err = HandlingFailure(path, handler.pattern, handler.name, repr(exc))
+            err = HandlingFailure(
+                path, handler.pattern, repr(handler.handler), repr(exc)
+            )
 
         data = None if record is None else (key, record)
         return data, err
-
-    @staticmethod
-    def _column_groups_from_handlers(
-        handlers_map: Dict[str, List[Handler]]
-    ) -> Dict[str, Dict[str, Schema]]:
-        """
-        Extract column groups from a bunch of handlers, using the ``handler.label`` as
-        the column group key.
-        """
-        column_groups: Dict[str, Dict[str, Schema]] = defaultdict(dict)
-        for group, handlers in handlers_map.items():
-            for handler in handlers:
-                if handler.label in column_groups[group]:
-                    raise RuntimeError(
-                        f"Duplicate handler with label {handler.label} in group {group}"
-                    )
-                column_groups[group][handler.label] = handler.schema
-        return column_groups

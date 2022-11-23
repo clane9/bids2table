@@ -1,120 +1,97 @@
+import logging
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional, Tuple, Union
 
-import pandas as pd
 import pyarrow as pa
 
-from bids2table import Key
-from bids2table.schema import Schema
+from bids2table import RecordDict
+from bids2table.schema import concat_schemas
 
 
-class Table:
+class IncrementalTable:
     """
     A table consisting of one or more column groups that you build incrementally.
 
     Args:
-        column_groups: A ``dict`` mapping column group labels to an associated schema
-        index_names: Name(s) for the index column(s).
         constants: A ``dict`` mapping column labels to constant values.
     """
 
+    SEP = "__"
+    INDEX_PREFIX = "_index"
+
     def __init__(
         self,
-        column_groups: Dict[str, Schema],
-        index_names: List[str],
+        index_schema: pa.Schema,
+        schema: Union[pa.Schema, Dict[str, pa.Schema]],
         constants: Optional[Dict[str, Any]] = None,
     ):
-        if len(column_groups) == 0:
-            raise ValueError("At least one column group required")
-        if len(index_names) == 0:
-            raise ValueError("At least one index name required")
-
-        self.column_groups = column_groups
-        self.index_names = index_names
+        self.index_schema = index_schema
+        self.schema = schema
         self.constants = constants
-        self._table: Dict[str, Dict[Key, List[Any]]] = defaultdict(dict)
 
-    def put(self, key: Key, column_group: str, record: Dict[str, Any]):
-        """
-        Insert a ``record`` at the row ``key`` under ``column_group``.
-        """
-        key = self._check_key(key)
-        schema = self.column_groups[column_group]
-        row = [record.get(col) for col in schema.columns()]
-        self._table[column_group][key] = row
-
-    def _check_key(self, key: Key) -> Key:
-        if isinstance(key, tuple):
-            if len(key) != len(self.index_names):
-                raise ValueError(
-                    f"Invalid key {key}; expected same length as index_names "
-                    f"{self.index_names}"
-                )
+        if isinstance(schema, dict):
+            self.groups = set(schema.keys())
+            combined_schema = concat_schemas(schema, sep=self.SEP)
         else:
-            if len(self.index_names) != 1:
-                raise ValueError(
-                    f"Invalid key {key}; a tuple is required unless there is a "
-                    "single index column"
-                )
-            key = (key,)
+            self.groups = set()
+            combined_schema = schema
 
-        if not all(isinstance(ki, (int, str)) for ki in key):
-            raise TypeError(f"Invalid key {key}; expected only str and int")
-
-        if len(self.index_names) == 1:
-            key = key[0]
-        return key
-
-    def to_pandas(self) -> pd.DataFrame:
-        """
-        Convert the table to a pandas ``DataFrame``.
-
-        - Any missing rows for any of the column groups are filled with nulls.
-        - The hierarchical index is reset as a column group with the label ``"_index"``.
-        - Any constant columns specified by ``constants`` are added.
-        """
-        # construct table for each column group
-        column_tables = []
-        for column_group, schema in self.column_groups.items():
-            df = pd.DataFrame.from_dict(
-                self._table[column_group], orient="index", columns=schema.columns()
+        if constants is not None:
+            constants_schema = pa.schema(
+                {k: pa.from_numpy_dtype(type(v)) for k, v in constants.items()}
             )
-            df = df.astype(schema.fields)
-            df.index.names = self.index_names
-            column_tables.append(df)
-        # concatenate column group tables
-        df = pd.concat(
-            column_tables, axis=1, keys=list(self.column_groups.keys()), sort=True
+            combined_schema = concat_schemas([constants_schema, combined_schema])
+        self._combined_schema = concat_schemas(
+            [index_schema, combined_schema],
+            [self.INDEX_PREFIX, None],
+            sep=self.SEP,
         )
-        # reset hierarchical index to columns
-        df = df.reset_index(col_level=1, col_fill="_index")
-        df.loc[:, ("_index", slice(None))] = df.loc[
-            :, ("_index", slice(None))
-        ].convert_dtypes()
-        # add constant columns
-        for col in reversed(list(self.constants.keys())):
-            df.insert(0, col, self.constants[col])
-            df.loc[col] = df.loc[col].convert_dtypes()
-        return df
+        self._columns = set(self._combined_schema.names)
+        self._table: Dict[Tuple[Any, ...], RecordDict] = defaultdict(dict)
 
-    def metadata(self) -> Dict[str, Any]:
+    def put(self, key: RecordDict, record: RecordDict, group: Optional[str] = None):
         """
-        Combined metadata for each column group.
+        Insert ``record`` at the row indexed by ``key`` under ``group``.
         """
-        metadata = {
-            f"{col}.{k}": v
-            for col, schema in self.column_groups.items()
-            for k, v in schema.metadata.items()
-        }
-        return metadata
+        key_tup = tuple(key.values())
+        row = self._table[key_tup]
+        if len(row) == 0:
+            # initialize the index entries and constants on row creation
+            row.update(self._prepend_prefix(key, self.INDEX_PREFIX))
+            row.update(self.constants)
 
-    def to_pyarrow(self) -> pa.Table:
-        """
-        Convert the table to a PyArrow ``Table``.
+        if group is not None:
+            assert group in self.groups, f"Unrecognized group '{group}'"
+            record = self._prepend_prefix(record, group)
 
-        The table is first converted to a pandas ``DataFrame`` via ``to_pandas()``.
+        cols = set(record.keys())
+        outlier_cols = cols.difference(self._columns)
+        if outlier_cols:
+            raise ValueError(
+                "Record contains columns not in the schema:\n"
+                f"\t{', '.join(outlier_cols)}"
+            )
+        updating_cols = cols.intersection(row.keys())
+        if updating_cols:
+            logging.warning(
+                f"Overwriting the following table columns at row: {key}\n"
+                f"\t{', '.join(updating_cols)}"
+            )
+        row.update(record)
+
+    @classmethod
+    def _prepend_prefix(cls, record: RecordDict, prefix: str) -> RecordDict:
         """
-        tab = self.to_pandas()
-        tab = pa.Table.from_pandas(tab)
-        tab = tab.replace_schema_metadata(self.metadata())
-        return tab
+        Prepend a prefix to all the record keys.
+        """
+        return {f"{prefix}{cls.SEP}{k}": v for k, v in record.items()}
+
+    def as_table(self) -> pa.Table:
+        """
+        Convert the table to a pyarrow ``Table``.
+        """
+        table = pa.Table.from_pylist(
+            [self._table[k] for k in sorted(self._table.keys())],
+            schema=self._combined_schema,
+        )
+        return table

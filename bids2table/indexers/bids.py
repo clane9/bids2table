@@ -2,27 +2,22 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from bids2table import Key, StrOrPath
-from bids2table.indexers import Indexer, register_indexer
+from bids2table import RecordDict, StrOrPath
+
+from .indexer import Indexer
+from .registry import register_indexer
 
 __all__ = [
-    "BIDSValue",
     "BIDSEntity",
     "BIDSIndexer",
 ]
 
 BIDSValue = Union[str, int, float]
 
-VALID_DTYPES = {
+BIDS_DTYPES: Dict[str, type] = {
     "str": str,
     "int": int,
     "float": float,
-}
-
-NULL_VALUES: Dict[str, BIDSValue] = {
-    "str": "",
-    "int": -1,
-    "float": float("nan"),
 }
 
 
@@ -36,7 +31,7 @@ class BIDSEntity:
         pattern: Regex pattern for extracting the value. There should be a single
             (capturing group to capture the value. Should use a posix path separator (/)
             regardless of platform. (default: ``"[_/]{key}-(.+?)[._/]"``).
-        dtype: Dtype name, one of ``"str"``, ``"int"``, ``"float"`` (default: ``"str"``).
+        dtype: Type name or type.
         required: Whether the entity is required.
 
     .. note::
@@ -53,23 +48,23 @@ class BIDSEntity:
         name: str,
         key: Optional[str] = None,
         pattern: Optional[str] = None,
-        dtype: str = "str",
+        dtype: Union[str, type] = "str",
         required: bool = False,
     ):
         if key is None:
             key = name
         if pattern is None:
             pattern = f"[_/]{key}-(.+?)[._/]"
-        if dtype not in VALID_DTYPES:
-            valid_dtypes_str = ", ".join(map(repr, VALID_DTYPES.keys()))
+        if not (dtype in BIDS_DTYPES or dtype in BIDS_DTYPES.values()):
             raise ValueError(
-                f"Unexpected dtype {dtype}; expected one of {valid_dtypes_str}"
+                f"Unexpected dtype {dtype}; expected one of "
+                ", ".join(BIDS_DTYPES.keys())
             )
 
         self.name = name
         self.key = key
         self.pattern = pattern
-        self.dtype = dtype
+        self.dtype = BIDS_DTYPES[dtype] if isinstance(dtype, str) else dtype
         self.required = required
 
         self._p = re.compile(pattern)
@@ -89,19 +84,11 @@ class BIDSEntity:
         match = self._p.search(path)
         if match is None:
             return None
-        value = match.group(1)
-        value = self._cast(value)
-        return value
-
-    def _cast(self, value: str) -> BIDSValue:
-        try:
-            value = VALID_DTYPES[self.dtype](value)
-        except ValueError:
-            raise ValueError(f"Unable to cast value {value} to dtype '{self.dtype}'")
+        value = self.dtype(match.group(1))
         return value
 
 
-@register_indexer("bids_indexer")
+@register_indexer(name="bids_indexer")
 class BIDSIndexer(Indexer):
     """
     Indexer for a `BIDS`_ analysis directory.
@@ -116,7 +103,7 @@ class BIDSIndexer(Indexer):
         self,
         columns: List[Union[str, Dict[str, Any], BIDSEntity]],
     ):
-        columns_ = []
+        columns_: List[BIDSEntity] = []
         for col in columns:
             if isinstance(col, str):
                 col = BIDSEntity(name=col)
@@ -124,25 +111,12 @@ class BIDSIndexer(Indexer):
                 col = BIDSEntity(**col)
             elif not isinstance(col, BIDSEntity):
                 raise TypeError(f"Invalid BIDS index column {col}")
-
-            if col.dtype not in {"str", "int"}:
-                raise ValueError(
-                    "Only 'str' and 'int' BIDS entities supported in an index."
-                )
             columns_.append(col)
-        self.columns: List[BIDSEntity] = columns_
 
-    def get_key(self, path: StrOrPath) -> Optional[Key]:
-        key = []
-        for col in self.columns:
-            val = col.search(path)
-            if val is None:
-                if col.required:
-                    return None
-                val = NULL_VALUES[col.dtype]
-            assert isinstance(val, (str, int)), f"Invalid BIDS index column value {val}"
-            key.append(val)
-        return tuple(key)
+        super().__init__(fields={col.name: col.dtype for col in columns_})
+        self.columns = columns_
 
-    def index_names(self) -> List[str]:
-        return [col.name for col in self.columns]
+    def _load(self, path: StrOrPath) -> Optional[RecordDict]:
+        path = Path(path)
+        record = {col.name: col.search(path) for col in self.columns}
+        return record
