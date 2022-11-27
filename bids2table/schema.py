@@ -1,3 +1,4 @@
+import json
 import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -10,6 +11,7 @@ __all__ = [
     "create_schema",
     "get_dtype",
     "get_fields",
+    "format_schema",
     "cast_to_schema",
     "concat_schemas",
 ]
@@ -25,15 +27,6 @@ def create_schema(
     Similar to ``pa.schema()`` but with extended type inference.
 
     See ``get_dtype()`` for details about the supported type inference.
-
-    TODO: It would be nice if there could be some round trip functionality for:
-        - config ->
-        - schema ->
-        - string ->
-        - config
-
-    This way you could e.g. infer a complex schema from an example offline, and then fix
-    it in the config.
     """
     if isinstance(fields, dict):
         fields = list(fields.items())
@@ -48,12 +41,7 @@ def _as_field(f: Union[pa.Field, Tuple[str, DataType]]) -> pa.Field:
     return f
 
 
-_NESTED_TYPES = [
-    (re.compile(r"^(?:list|array)\[(.+)\]$"), pa.list_),
-]
-
-
-def get_dtype(dtype: DataType) -> pa.DataType:
+def get_dtype(alias: DataType) -> pa.DataType:
     """
     Attempt to infer the PyArrow dtype from string type alias or numpy dtype.
 
@@ -61,37 +49,65 @@ def get_dtype(dtype: DataType) -> pa.DataType:
 
     The following nested type aliases are also supported:
 
-    - ``"list[<type>]"`` -> ``pa.list_(<type>)``
-    - ``"array[<type>]"`` -> ``pa.list_(<type>)``
+    - ``"array<TYPE>"`` -> ``pa.list_(TYPE)``
+    - ``"list<TYPE>"`` -> ``pa.list_(TYPE)``
+    - ``"list<item: TYPE>"`` -> ``pa.list_(TYPE)``
+    - ``"struct<NAME: TYPE, ...>"`` -> ``pa.struct({NAME: TYPE, ...})``
 
     .. _here: https://github.com/apache/arrow/blob/go/v10.0.0/python/pyarrow/types.pxi#L3159
-
-    TODO: Could go crazy and supported struct types with nested field sequences. Not now
-    though. Although these could happen when schemas are initialized by example.
     """
-    try:
-        dtype = pa.lib.ensure_type(dtype)
+    if not isinstance(alias, str):
+        return _get_primitive_dtype(alias)
+
+    alias = alias.strip()
+
+    dtype = _struct_from_string(alias)
+    if dtype is not None:
         return dtype
+
+    dtype = _list_from_string(alias)
+    if dtype is not None:
+        return dtype
+
+    return _get_primitive_dtype(alias)
+
+
+def _get_primitive_dtype(dtype: DataType) -> pa.DataType:
+    try:
+        return pa.lib.ensure_type(dtype)
     except Exception:
         pass
 
     try:
-        dtype = pa.from_numpy_dtype(dtype)
-        return dtype
+        return pa.from_numpy_dtype(dtype)
     except Exception:
         pass
-
-    if not isinstance(dtype, str):
-        raise ValueError(f"Unsupported dtype {dtype}")
-
-    for pattern, dtype_ in _NESTED_TYPES:
-        match = pattern.match(dtype)
-        if match is not None:
-            args = tuple(map(get_dtype, match.groups()))
-            dtype = dtype_(*args)
-            return dtype
 
     raise ValueError(f"Unsupported dtype '{dtype}'")
+
+
+def _struct_from_string(alias: str) -> Optional[pa.DataType]:
+    match = re.match(r"^struct\s*<(.+)>$", alias)
+    if match is None:
+        return None
+    fields = []
+    items = match.group(1).split(",")
+    try:
+        for item in items:
+            name, alias = item.split(":")
+            fields.append((name.strip(), get_dtype(alias)))
+    except ValueError:
+        raise ValueError(f"Invalid struct alias {alias}")
+    return pa.struct(fields)
+
+
+def _list_from_string(alias: str) -> Optional[pa.DataType]:
+    match = re.match(r"^(?:list|array)\s*<(?:\s*item\s*:)?(.+)>$", alias)
+    if match is None:
+        return None
+    alias = match.group(1)
+    dtype = get_dtype(alias)
+    return pa.list_(dtype)
 
 
 def get_fields(schema: pa.Schema) -> Dict[str, pa.DataType]:
@@ -100,6 +116,31 @@ def get_fields(schema: pa.Schema) -> Dict[str, pa.DataType]:
     """
     fields = {name: schema.field(name).type for name in schema.names}
     return fields
+
+
+def format_schema(schema: pa.Schema) -> str:
+    """
+    Format a pyarrow schema as a string.
+
+    The result is also valid YAML so that the schema can be reconstructed by e.g.::
+
+        create_schema(**yaml.safe_load(format_schema(schema)))
+    """
+    fields = get_fields(schema)
+    fields_json = json.dumps({name: str(dtype) for name, dtype in fields.items()})
+    if schema.metadata is None:
+        metadata_json = json.dumps(None)
+    else:
+        metadata_json = json.dumps(
+            {_as_str(k): _as_str(v) for k, v in schema.metadata.items()}
+        )
+    return f"fields: {fields_json}\nmetadata: {metadata_json}"
+
+
+def _as_str(val: Union[str, bytes]) -> str:
+    if isinstance(val, bytes):
+        val = val.decode()
+    return val
 
 
 def cast_to_schema(
@@ -181,14 +222,13 @@ def concat_schemas(
                 raise ValueError(f"Duplicate column '{k}'")
             fields[k] = v
 
-        k_: bytes
         if schema.metadata is not None:
             for k_, v in schema.metadata.items():
-                k = k_.decode()
+                k = _as_str(k_)
                 if key is not None:
                     k = f"{key}{sep}{k}"
                 if k in metadata:
                     raise ValueError(f"Duplicate metadata key '{k}'")
                 metadata[k] = v
-    schema = pa.schema(fields, metadata=metadata)
+    schema = pa.schema(fields, metadata=(metadata or None))
     return schema

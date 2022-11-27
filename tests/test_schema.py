@@ -5,6 +5,7 @@ from typing import Dict, Tuple
 import numpy as np
 import pyarrow as pa
 import pytest
+import yaml
 from pytest import FixtureRequest
 
 from bids2table import RecordDict
@@ -13,6 +14,7 @@ from bids2table.schema import (
     cast_to_schema,
     concat_schemas,
     create_schema,
+    format_schema,
     get_dtype,
     get_fields,
 )
@@ -26,7 +28,11 @@ def fields() -> Dict[str, Tuple[DataType, pa.DataType]]:
         "c": ("str", pa.string()),
         "d": (np.float32, pa.float32()),
         "e": ("datetime64[ns]", pa.timestamp("ns")),
-        "f": ("list[float32]", pa.list_(pa.float32())),
+        "f": ("list<float32>", pa.list_(pa.float32())),
+        "g": (
+            "struct < A: int, B: str >",
+            pa.struct({"A": pa.int64(), "B": pa.string()}),
+        ),
     }
 
 
@@ -56,9 +62,7 @@ def metadata() -> Dict[str, str]:
     }
 
 
-@pytest.fixture(
-    params=[object, "object", "map[int, str]", "list", "struct", "list_[float32]"]
-)
+@pytest.fixture(params=[object, "object", "map<int32, str>", "list", "struct"])
 def unsupported_dtype(request: FixtureRequest) -> DataType:
     return request.param
 
@@ -86,6 +90,19 @@ def test_get_fields(fields: Dict[str, Tuple[DataType, pa.DataType]]):
     extracted_fields = get_fields(schema)
     assert expected_fields == extracted_fields
     assert list(expected_fields.keys()) == list(extracted_fields.keys())
+
+
+def test_format_schema(
+    fields: Dict[str, Tuple[DataType, pa.DataType]],
+    metadata: Dict[str, str],
+):
+    fields_ = {name: f[1] for name, f in fields.items()}
+    schema = pa.schema(fields_, metadata=metadata)
+
+    schema_fmt = format_schema(schema)
+    schema_cfg = yaml.safe_load(schema_fmt)
+    schema2 = create_schema(schema_cfg["fields"], metadata=schema_cfg["metadata"])
+    assert schema.equals(schema2)
 
 
 def test_cast_to_schema(
