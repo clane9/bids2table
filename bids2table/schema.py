@@ -6,12 +6,20 @@ import pyarrow as pa
 
 from bids2table import RecordDict
 
+__all__ = [
+    "create_schema",
+    "get_dtype",
+    "get_fields",
+    "cast_to_schema",
+    "concat_schemas",
+]
+
 DataType = Union[str, pa.DataType, np.dtype]
 Fields = Union[List[pa.Field], List[Tuple[str, DataType]], Dict[str, DataType]]
 
 
 def create_schema(
-    fields: Fields, metadata: Optional[Dict[str, Any]] = None
+    fields: Fields, metadata: Optional[Dict[str, str]] = None
 ) -> pa.Schema:
     """
     Similar to ``pa.schema()`` but with extended type inference.
@@ -29,23 +37,15 @@ def create_schema(
     """
     if isinstance(fields, dict):
         fields = list(fields.items())
-
-    def as_field(f):
-        if not isinstance(f, pa.Field):
-            f = create_field(*f)
-        return f
-
-    schema = pa.schema(map(as_field, fields), metadata=metadata)
+    schema = pa.schema(map(_as_field, fields), metadata=metadata)
     return schema
 
 
-def create_field(name: str, dtype: DataType) -> pa.Field:
-    """
-    Similar to ``pa.field()`` but with extended type inference.
-
-    See ``get_dtype()`` for details about the supported type inference.
-    """
-    return pa.field(name, get_dtype(dtype))
+def _as_field(f: Union[pa.Field, Tuple[str, DataType]]) -> pa.Field:
+    if not isinstance(f, pa.Field):
+        name, dtype = f
+        f = pa.field(name, get_dtype(dtype))
+    return f
 
 
 _NESTED_TYPES = [
@@ -57,10 +57,14 @@ def get_dtype(dtype: DataType) -> pa.DataType:
     """
     Attempt to infer the PyArrow dtype from string type alias or numpy dtype.
 
+    The list of available pyarrow type aliases is available `here`_.
+
     The following nested type aliases are also supported:
 
     - ``"list[<type>]"`` -> ``pa.list_(<type>)``
     - ``"array[<type>]"`` -> ``pa.list_(<type>)``
+
+    .. _here: https://github.com/apache/arrow/blob/go/v10.0.0/python/pyarrow/types.pxi#L3159
 
     TODO: Could go crazy and supported struct types with nested field sequences. Not now
     though. Although these could happen when schemas are initialized by example.
@@ -87,7 +91,7 @@ def get_dtype(dtype: DataType) -> pa.DataType:
             dtype = dtype_(*args)
             return dtype
 
-    raise ValueError(f"Unrecognized dtype '{dtype}'")
+    raise ValueError(f"Unsupported dtype '{dtype}'")
 
 
 def get_fields(schema: pa.Schema) -> Dict[str, pa.DataType]:
@@ -117,17 +121,17 @@ def cast_to_schema(
     for name, dtype in get_fields(schema).items():
         if record.get(name) is not None:
             # TODO: Will need to extend here for any extension types
-            if safe:
-                val = pa.scalar(record[name]).cast(dtype)
-            else:
+            if not safe or isinstance(dtype, pa.ListType):
                 val = pa.scalar(record[name], type=dtype)
-            record_[name] = scalar_as_py(val)
+            else:
+                val = pa.scalar(record[name]).cast(dtype)
+            record_[name] = _scalar_as_py(val)
         elif with_null:
             record_[name] = None
     return record_
 
 
-def scalar_as_py(scalar: pa.Scalar) -> Any:
+def _scalar_as_py(scalar: pa.Scalar) -> Any:
     """
     Recursively convert a pyarrow scalar to a standard python object, converting structs
     to dicts and lists to numpy arrays. All other types are converted using pyarrow's
@@ -138,7 +142,7 @@ def scalar_as_py(scalar: pa.Scalar) -> Any:
         ensure pyarrow lists convert to numpy arrays.
     """
     if isinstance(scalar, pa.StructScalar):
-        py_scalar = {k: scalar_as_py(v) for k, v in scalar.items()}
+        py_scalar = {k: _scalar_as_py(v) for k, v in scalar.items()}
     elif isinstance(scalar, pa.ListScalar):
         py_scalar = scalar.values.to_numpy()
     else:
@@ -164,7 +168,7 @@ def concat_schemas(
         raise ValueError("One key per schema is required")
 
     fields: Dict[str, DataType] = {}
-    metadata: Dict[str, Any] = {}
+    metadata: Dict[str, str] = {}
 
     for ii, schema in enumerate(schemas):
         key = keys[ii] if keys is not None else None
@@ -179,11 +183,12 @@ def concat_schemas(
 
         k_: bytes
         if schema.metadata is not None:
-            for k_, v in schema.metadata:
+            for k_, v in schema.metadata.items():
                 k = k_.decode()
                 if key is not None:
                     k = f"{key}{sep}{k}"
                 if k in metadata:
                     raise ValueError(f"Duplicate metadata key '{k}'")
+                metadata[k] = v
     schema = pa.schema(fields, metadata=metadata)
     return schema

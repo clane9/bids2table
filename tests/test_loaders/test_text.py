@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 from pytest import FixtureRequest
 
-from bids2table.loaders import text
+from bids2table.loaders import get_loader, text
 
 
 @pytest.fixture(params=["flat", "nested"])
@@ -71,9 +71,13 @@ def array_tsv(tmp_path: Path, random_array: np.ndarray) -> Path:
 
 
 def test_load_single_row_tsv(single_row_tsv: Path, record: Dict[str, Any]):
-    with open(single_row_tsv) as f:
-        print(repr(f.read()))
     loaded_record = text.load_single_row_tsv(single_row_tsv)
+    assert loaded_record == record
+
+
+def test_get_load_single_row_tsv(single_row_tsv: Path, record: Dict[str, Any]):
+    loader = get_loader("load_single_row_tsv")
+    loaded_record = loader(single_row_tsv)
     assert loaded_record == record
 
 
