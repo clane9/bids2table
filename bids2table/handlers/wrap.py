@@ -1,24 +1,34 @@
+import json
+from dataclasses import dataclass
 from importlib import resources
+from pathlib import Path
 from typing import Dict, Optional
 
 import pyarrow as pa
+from omegaconf import MISSING
 
 from bids2table import RecordDict, StrOrPath, find_file
-from bids2table.loaders import Loader
+from bids2table.loaders import Loader, get_loader
 from bids2table.schema import Fields, get_fields
 
-from .handler import Handler
+from .handler import Handler, HandlerConfig
 from .registry import register_handler
 
-__all__ = ["WrapHandler"]
+__all__ = ["WrapHandlerConfig", "WrapHandler"]
+
+
+@dataclass
+class WrapHandlerConfig(HandlerConfig):
+    loader: str = MISSING
+    fields: Optional[Dict[str, str]] = None
+    example: Optional[Path] = None
+    rename_map: Optional[Dict[str, str]] = None
 
 
 @register_handler(name="wrap_handler")
 class WrapHandler(Handler):
     """
     A Handler wrapping a ``loader`` function.
-
-    TODO: specialize ``from_config``
     """
 
     def __init__(
@@ -27,7 +37,7 @@ class WrapHandler(Handler):
         fields: Optional[Fields] = None,
         example: Optional[StrOrPath] = None,
         metadata: Optional[Dict[str, str]] = None,
-        rename_map: Dict[str, str] = {},
+        rename_map: Optional[Dict[str, str]] = None,
     ):
         fields_ = {}
         if example is not None:
@@ -71,11 +81,32 @@ class WrapHandler(Handler):
 
     @staticmethod
     def apply_renaming(
-        rename_map: Dict[str, str], record: Optional[RecordDict]
+        rename_map: Optional[Dict[str, str]], record: Optional[RecordDict]
     ) -> Optional[RecordDict]:
         """
         Apply a renaming map to the keys in ``record``.
         """
-        if record is None:
+        if rename_map is None or record is None:
             return record
         return {rename_map.get(k, k): v for k, v in record.items()}
+
+    @classmethod
+    def from_config(cls, cfg: WrapHandlerConfig) -> "Handler":  # type: ignore[override]
+        """
+        Initialze a Handler from a config.
+        """
+        return cls(
+            loader=get_loader(cfg.loader),
+            fields=cfg.fields,
+            example=cfg.example,
+            metadata=cfg.metadata,
+            rename_map=cfg.rename_map,
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"{super().__repr__()}\n"
+            f"\tloader: {self.loader}\n"
+            f"\texample: {self.example}\n"
+            f"\trename_map: {json.dumps(self.rename_map)}"
+        )

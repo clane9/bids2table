@@ -1,13 +1,18 @@
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
+
+from omegaconf import MISSING
 
 from bids2table import RecordDict, StrOrPath
 
-from .indexer import Indexer
+from .indexer import Indexer, IndexerConfig
 from .registry import register_indexer
 
 __all__ = [
+    "BIDSEntityConfig",
+    "BIDSIndexerConfig",
     "BIDSEntity",
     "BIDSIndexer",
 ]
@@ -19,6 +24,22 @@ BIDS_DTYPES: Dict[str, type] = {
     "int": int,
     "float": float,
 }
+
+
+@dataclass
+class BIDSEntityConfig:
+    name: str = MISSING
+    key: Optional[str] = None
+    pattern: Optional[str] = None
+    dtype: str = "str"
+    required: bool = False
+
+
+@dataclass
+class BIDSIndexerConfig(IndexerConfig):
+    columns: List[BIDSEntityConfig] = MISSING
+    fields: None = None
+    metadata: None = None
 
 
 class BIDSEntity:
@@ -87,6 +108,19 @@ class BIDSEntity:
         value = self.dtype(match.group(1))
         return value
 
+    @classmethod
+    def from_config(cls, cfg: BIDSEntityConfig) -> "BIDSEntity":
+        """
+        Create a BIDS entity from a config.
+        """
+        return cls(
+            name=cfg.name,
+            key=cfg.key,
+            pattern=cfg.pattern,
+            dtype=cfg.dtype,
+            required=cfg.required,
+        )
+
 
 @register_indexer(name="bids_indexer")
 class BIDSIndexer(Indexer):
@@ -99,24 +133,22 @@ class BIDSIndexer(Indexer):
         columns: list of BIDS entities making up the index.
     """
 
-    def __init__(
-        self,
-        columns: List[Union[str, Dict[str, Any], BIDSEntity]],
-    ):
-        columns_: List[BIDSEntity] = []
-        for col in columns:
-            if isinstance(col, str):
-                col = BIDSEntity(name=col)
-            elif isinstance(col, dict):
-                col = BIDSEntity(**col)
-            elif not isinstance(col, BIDSEntity):
-                raise TypeError(f"Invalid BIDS index column {col}")
-            columns_.append(col)
+    def __init__(self, columns: List[BIDSEntity]):
+        if len(columns) == 0:
+            raise ValueError("At least one column required")
 
-        super().__init__(fields={col.name: col.dtype for col in columns_})
-        self.columns = columns_
+        super().__init__(fields={col.name: col.dtype for col in columns})
+        self.columns = columns
 
     def _load(self, path: StrOrPath) -> Optional[RecordDict]:
         path = Path(path)
         record = {col.name: col.search(path) for col in self.columns}
         return record
+
+    @classmethod
+    def from_config(cls, cfg: BIDSIndexerConfig) -> "BIDSIndexer":  # type: ignore[override]
+        """
+        Create a BIDS indexer from a config.
+        """
+        columns = [BIDSEntity.from_config(entcfg) for entcfg in cfg.columns]
+        return cls(columns=columns)

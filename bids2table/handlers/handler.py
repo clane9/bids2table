@@ -1,14 +1,31 @@
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, NamedTuple, Optional
+from typing import Dict, Iterator, List, NamedTuple, Optional
+
+from omegaconf import MISSING
 
 from bids2table import RecordDict, StrOrPath
-from bids2table.schema import Fields, cast_to_schema, create_schema
+from bids2table.schema import Fields, cast_to_schema, create_schema, format_schema
 from bids2table.utils import set_overlap
 
-__all__ = ["Handler", "HandlerTuple", "HandlerLUT"]
+__all__ = [
+    "HandlerConfig",
+    "Handler",
+    "HandlerTuple",
+    "HandlerLUT",
+]
+
+
+@dataclass
+class HandlerConfig:
+    name: str = MISSING
+    pattern: str = MISSING
+    label: str = MISSING
+    fields: Optional[Dict[str, str]] = MISSING
+    metadata: Optional[Dict[str, str]] = None
 
 
 class Handler(ABC):
@@ -68,18 +85,17 @@ class Handler(ABC):
         return record
 
     @classmethod
-    def from_config(cls, cfg: Dict[str, Any]) -> "Handler":
+    def from_config(cls, cfg: HandlerConfig) -> "Handler":
         """
         Initialze a Handler from a config.
         """
-        return cls(fields=cfg["fields"], metadata=cfg.get("metadata"))
+        if cfg.fields is None:
+            raise ValueError("cfg.fields is required")
+        return cls(fields=cfg.fields, metadata=cfg.metadata)
 
     def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}:\n"
-            f"\tfields: {self.fields}\n"
-            f"\tmetadata: {self.metadata}"
-        )
+        schema_fmt = "\n\t".join(format_schema(self.schema).split("\n"))
+        return f"{self.__class__.__name__}:\n\t{schema_fmt}"
 
 
 class HandlerTuple(NamedTuple):

@@ -1,12 +1,22 @@
 from abc import abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
+
+from omegaconf import MISSING
 
 from bids2table import RecordDict, StrOrPath
 from bids2table.handlers import Handler
 from bids2table.schema import Fields
 
-__all__ = ["Indexer"]
+__all__ = ["IndexerConfig", "Indexer"]
+
+
+@dataclass
+class IndexerConfig:
+    name: str = MISSING
+    fields: Optional[Dict[str, str]] = MISSING
+    metadata: Optional[Dict[str, str]] = None
 
 
 class Indexer(Handler):
@@ -58,5 +68,10 @@ class Indexer(Handler):
         self.root = Path(dirpath)
 
     @classmethod
-    def from_config(cls, cfg: Dict[str, Any]) -> "Indexer":
-        return cls(**cfg)
+    def from_config(cls, cfg: IndexerConfig) -> "Indexer":  # type: ignore[override]
+        """
+        Initialze an Indexer from a config.
+        """
+        if cfg.fields is None:
+            raise ValueError("cfg.fields is required")
+        return cls(fields=cfg.fields, metadata=cfg.metadata)
