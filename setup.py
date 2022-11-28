@@ -1,6 +1,6 @@
 import pathlib
 
-from setuptools import setup
+from setuptools import find_packages, setup
 
 HERE = pathlib.Path(__file__).parent
 README = (HERE / "README.md").read_text()
@@ -14,6 +14,9 @@ def get_version():
     return version
 
 
+packages = find_packages(exclude=("tests",))
+
+
 setup(
     name="bids2table",
     version=get_version(),
@@ -23,7 +26,7 @@ setup(
     description="ETL BIDS data into tables",
     long_description=README,
     long_description_content_type="text/markdown",
-    packages=["bids2table"],
+    packages=packages,
     include_package_data=True,
     python_requires=">=3.7",
     install_requires=[

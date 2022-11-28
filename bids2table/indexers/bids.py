@@ -37,6 +37,7 @@ class BIDSEntityConfig:
 
 @dataclass
 class BIDSIndexerConfig(IndexerConfig):
+    name: str = "bids_indexer"
     columns: List[BIDSEntityConfig] = MISSING
     fields: None = None
     metadata: None = None

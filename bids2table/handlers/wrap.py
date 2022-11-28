@@ -8,7 +8,7 @@ import pyarrow as pa
 from omegaconf import MISSING
 
 from bids2table import RecordDict, StrOrPath, find_file
-from bids2table.loaders import Loader, get_loader
+from bids2table.loaders import Loader, LoaderConfig, loader_from_config
 from bids2table.schema import Fields, get_fields
 
 from .handler import Handler, HandlerConfig
@@ -19,7 +19,8 @@ __all__ = ["WrapHandlerConfig", "WrapHandler"]
 
 @dataclass
 class WrapHandlerConfig(HandlerConfig):
-    loader: str = MISSING
+    name: str = "wrap_handler"
+    loader: LoaderConfig = MISSING
     fields: Optional[Dict[str, str]] = None
     example: Optional[Path] = None
     rename_map: Optional[Dict[str, str]] = None
@@ -70,8 +71,8 @@ class WrapHandler(Handler):
         """
         # TODO: how exactly do you include package resources and is this how we want to
         # publish examples?
-        if resources.is_resource(__package__, str(path)):
-            with resources.path(__package__, str(path)) as p:
+        if resources.is_resource("bids2table.examples", str(path)):
+            with resources.path("bids2table.examples", str(path)) as p:
                 return loader(p)
         else:
             p = find_file(path)
@@ -96,7 +97,7 @@ class WrapHandler(Handler):
         Initialze a Handler from a config.
         """
         return cls(
-            loader=get_loader(cfg.loader),
+            loader=loader_from_config(cfg.loader),
             fields=cfg.fields,
             example=cfg.example,
             metadata=cfg.metadata,

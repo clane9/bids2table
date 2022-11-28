@@ -1,0 +1,12 @@
+defaults:
+  - base_wrap_handler
+
+# TODO: would this pattern really work in general?
+pattern: "*-mriqc/**/anat/*_T1w.json"
+label: mriqc_anat_T1w
+loader:
+  name: load_json_dict
+  # Excluding nested data since we can't handle these appropriately yet.
+  # Will be able to include once we have support for arbitrary objects.
+  kwargs: {"nested": False}
+example: mriqc_anat_T1w.json

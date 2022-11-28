@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Optional
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from bids2table.handlers import HandlerConfig
-from bids2table.indexers import IndexerConfig
+from bids2table.handlers import HandlerConfig, WrapHandlerConfig
+from bids2table.indexers import BIDSIndexerConfig, IndexerConfig
 
 __all__ = [
     "PathsConfig",
@@ -104,3 +104,10 @@ class Config:
 
 config_store = ConfigStore.instance()
 config_store.store(name="base", node=Config)
+
+config_store.store(
+    name="base_bids_indexer", node=BIDSIndexerConfig, group="tables/indexer"
+)
+config_store.store(
+    name="base_wrap_handler", node=WrapHandlerConfig, group="tables/handlers"
+)

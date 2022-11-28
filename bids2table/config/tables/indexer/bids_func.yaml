@@ -1,0 +1,11 @@
+defaults:
+  - base_bids_indexer
+
+columns:
+  - name: subject
+    key: sub
+  - name: session
+    key: ses
+  - name: task
+  - name: run
+    dtype: int

@@ -1,0 +1,9 @@
+defaults:
+  - base_bids_indexer
+
+# TODO: what about dataset?
+columns:
+  - name: subject
+    key: sub
+  - name: session
+    key: ses
