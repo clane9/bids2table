@@ -8,9 +8,10 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 import pyarrow as pa
 
 from bids2table import RecordDict, StrOrPath
-from bids2table.handlers import HandlerLUT, HandlerTuple
+from bids2table.handlers import HandlerTuple
 from bids2table.indexers import Indexer
 from bids2table.table import IncrementalTable
+from bids2table.utils import PatternLUT
 
 
 @dataclass
@@ -53,8 +54,8 @@ class Crawler:
         self.max_threads = max_threads
         self.max_failures = max_failures
 
-        self._handler_lut = HandlerLUT(
-            [h for handlers in handlers_map.values() for h in handlers]
+        self._handler_lut = PatternLUT(
+            [(h.pattern, h) for handlers in handlers_map.values() for h in handlers]
         )
 
     def __call__(
@@ -119,7 +120,7 @@ class Crawler:
     @staticmethod
     def _scan_for_matches(
         dirpath: StrOrPath,
-        handler_lut: HandlerLUT,
+        handler_lut: PatternLUT,
     ) -> Iterator[Tuple[str, HandlerTuple]]:
         """
         Scan a directory for files matching the handler patterns.
@@ -127,7 +128,7 @@ class Crawler:
         # TODO: A sub-class might generalize this to scan S3.
         with os.scandir(str(dirpath)) as it:
             for entry in it:
-                for handler in handler_lut.lookup(entry.path):
+                for _, handler in handler_lut.lookup(entry.path):
                     yield entry.path, handler
 
     @staticmethod

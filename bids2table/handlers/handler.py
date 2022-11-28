@@ -1,9 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
-from collections import defaultdict
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, Iterator, List, NamedTuple, Optional
+from typing import Dict, NamedTuple, Optional
 
 from omegaconf import MISSING
 
@@ -15,7 +13,6 @@ __all__ = [
     "HandlerConfig",
     "Handler",
     "HandlerTuple",
-    "HandlerLUT",
 ]
 
 
@@ -103,42 +100,3 @@ class HandlerTuple(NamedTuple):
     pattern: str
     label: str
     handler: Handler
-
-
-class HandlerLUT:
-    """
-    Lookup table mapping glob file patterns to handlers.
-
-    .. note::
-        If matched files are expected to have a suffix, e.g. ".txt", the pattern must
-        include the full suffix. Otherwise the matching will fail.
-    """
-
-    def __init__(self, handlers: List[HandlerTuple]):
-        self.handlers = handlers
-
-        # Organize handlers by suffix for faster lookup.
-        self._handlers_by_suffix: Dict[str, List[HandlerTuple]] = defaultdict(list)
-        for handler in handlers:
-            if handler.pattern[-1] in "]*?":
-                logging.warning(
-                    f"Pattern '{handler.pattern}' ends in a special character, "
-                    "assuming empty suffix"
-                )
-                suffix = ""
-            else:
-                suffix = Path(handler.pattern).suffix
-            self._handlers_by_suffix[suffix].append(handler)
-
-    def lookup(self, path: StrOrPath) -> Iterator[HandlerTuple]:
-        """
-        Lookup one or more handlers for a path by glob pattern matching.
-        """
-        path = Path(path)
-        for result in self._handlers_by_suffix[path.suffix]:
-            # TODO: could consider generalizing this pattern matching to:
-            #   - tuples of globs
-            #   - arbitrary regex
-            # But better to keep things simple for now.
-            if path.match(result.pattern):
-                yield result

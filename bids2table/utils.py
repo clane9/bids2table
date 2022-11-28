@@ -7,10 +7,67 @@ import re
 import sys
 import tempfile
 import time
+from collections import defaultdict
 from contextlib import contextmanager
+from fnmatch import fnmatch
 from glob import glob
 from pathlib import Path
-from typing import Iterable, List, Optional, Union
+from typing import (
+    Dict,
+    Generic,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
+
+T = TypeVar("T")
+
+
+class PatternLUT(Generic[T]):
+    """
+    Lookup table mapping glob file patterns to arbitrary values. Supports querying for
+    matching values by a file path.
+
+    Args:
+        items: List of ``(pattern, value)`` tuples making up the lookup table.
+
+    .. note::
+        If matched files are expected to have a suffix, e.g. ".txt", the pattern must
+        include the full suffix. Otherwise the matching will fail.
+    """
+
+    def __init__(self, items: List[Tuple[str, T]]):
+        self.items = items
+
+        # Organize items by suffix for faster lookup.
+        self._items_by_suffix: Dict[str, List[Tuple[str, T]]] = defaultdict(list)
+        for pattern, val in items:
+            if pattern[-1] in "]*?":
+                logging.warning(
+                    "Pattern '{pattern}' ends in a special character, assuming "
+                    "empty suffix"
+                )
+                suffix = ""
+            else:
+                suffix = Path(pattern).suffix
+            self._items_by_suffix[suffix].append((pattern, val))
+
+    def lookup(self, path: Union[str, Path]) -> Iterator[Tuple[str, T]]:
+        """
+        Lookup one or more items for a path by glob pattern matching.
+        """
+        path = Path(path)
+        for pattern, val in self._items_by_suffix[path.suffix]:
+            # TODO: could consider generalizing this pattern matching to:
+            #   - tuples of globs
+            #   - arbitrary regex
+            # But better to keep things simple for now.
+            if fnmatch(str(path), pattern):
+                yield pattern, val
 
 
 @contextmanager
