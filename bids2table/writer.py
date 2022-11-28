@@ -3,20 +3,22 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional, Union
 
-import pandas as pd
 import pyarrow as pa
 from pyarrow import parquet as pq
 
-from bids2table.schema import Schema
 from bids2table.utils import atomicopen, parse_size
-
-TableBatch = Union[pd.DataFrame, pa.Table]
 
 
 class BufferedParquetWriter:
     """
-    Write a stream of pandas ``DataFrame`` or `PyArrow`_ ``Table`` batches to a parquet
-    file using `PyArrow`_
+    Write a stream of `PyArrow`_ ``Table`` batches to a parquet directory.
+
+    Batches are first buffered and then written out to partitions of approximately a
+    fixed size. Writes are designed to be all-or-nothing, so there should be no
+    remaining partial files in case of interruption.
+
+    All batches must share the same schema, except for possibly the metadata. The
+    metadata are inherited from the first batch in each partition.
 
     Example::
 
@@ -24,15 +26,6 @@ class BufferedParquetWriter:
             for batch in batches:
                 writer.write(batch)
 
-    .. note::
-        The schema for the output file is initialized based on the first batch. This
-        can have consequences if the batches have different schemas, or even if the
-        first batch is just missing data for some columns.
-
-        By default, PyArrow will raise an error in this case. Setting ``coerce = True``
-        quiets this by coercing all batches to the schema of the first batch. In the
-        first-batch-missing-data case, the corresponding columns will have the
-        ``object`` dtype.
 
     TODO: would this work for paths on s3?
 
@@ -42,11 +35,9 @@ class BufferedParquetWriter:
     def __init__(
         self,
         prefix: str,
-        coerce: bool = False,
         partition_size: Union[str, int] = "64 MiB",
     ):
         self.prefix = prefix
-        self.coerce = coerce
         self.partition_size = partition_size
 
         if isinstance(partition_size, str):
@@ -54,7 +45,6 @@ class BufferedParquetWriter:
         else:
             self._partition_size_bytes = partition_size
 
-        self._schema: Optional[Schema] = None
         self._table: Optional[pa.Table] = None
         self._pool = ThreadPoolExecutor(max_workers=1)
         self._future: Optional[Future] = None
@@ -62,33 +52,23 @@ class BufferedParquetWriter:
         self._part_batch_start = 0
         self._batch_count = 0
 
-    def write(self, batch: TableBatch) -> str:
+    def write(self, batch: pa.Table) -> str:
         """
         Write a batch to the stream. If this is the first batch, the schema and stream
         will be initialized. Returns the path to the partition containing this batch.
+
+        TODO: simplify the interface to only accept pa tables
+            - this also simplifies the requirements of the schema
         """
-        if self._schema is None:
-            self._init_schema(batch)
-        batch = self._to_pyarrow(batch)
         if self._table is None:
             self._table = batch
         else:
-            self._table = pa.concat_tables([self._table, batch])
+            self._table = pa.concat_tables([self._table, batch], promote=False)
         self._batch_count += 1
-
         partition = self.path()
         if self._table.get_total_buffer_size() > self._partition_size_bytes:
             self.flush()
         return partition
-
-    def _init_schema(self, first_batch: TableBatch):
-        """
-        Initialize the output schema from the first batch.
-        """
-        if isinstance(first_batch, pd.DataFrame):
-            self._schema = Schema.from_pandas(first_batch)
-        else:
-            self._schema = Schema.from_pyarrow(table=first_batch)
 
     def path(self) -> str:
         """
@@ -100,23 +80,6 @@ class BufferedParquetWriter:
         else:
             path = f"{self.prefix}-{self._part:04d}.parquet"
         return path
-
-    def _to_pyarrow(self, batch: TableBatch) -> pa.Table:
-        """
-        Convert a table batch to a PyArrow ``Table`` (if necessary).
-        """
-        if isinstance(batch, pd.DataFrame):
-            if not self._schema.matches(batch):
-                logging.warning(
-                    "Parquet writer batch %d has a different schema\n\tprefix: %s",
-                    self._batch_count,
-                    self.prefix,
-                )
-                if self.coerce:
-                    batch = self._schema.coerce(batch)
-            batch = pa.Table.from_pandas(batch)
-            batch = batch.replace_schema_metadata(self._schema.metadata)
-        return batch
 
     def flush(self, blocking: bool = False):
         """
@@ -143,7 +106,6 @@ class BufferedParquetWriter:
                 self.path(),
                 2 * self._partition_size_bytes,
             )
-
             self._table = None
             self._part += 1
             self._part_batch_start = self._batch_count

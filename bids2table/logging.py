@@ -12,28 +12,25 @@ import pandas as pd
 from bids2table import StrOrPath
 from bids2table.crawler import HandlingFailure
 from bids2table.engine import _format_task_id
-from bids2table.schema import Schema
 
 __all__ = ["ProcessedLog"]
 
 
 class ProcessedLog:
     PREFIX = "_log"
-    SCHEMA = Schema(
-        {
-            "timestamp": np.datetime64,
-            "run_id": str,
-            "task_id": int,
-            # TODO: paths can get quite long. Also, datasets can move around. Do we want a
-            # more robust way to identify repeat chunks? Maybe an `Indexer`?
-            #   - for now don't worry about it
-            "dir": str,
-            "count": int,
-            "error_count": int,
-            "error_rate": float,
-            "partitions": object,
-        }
-    )
+    FIELDS = {
+        "timestamp": np.datetime64,
+        "run_id": str,
+        "task_id": int,
+        # TODO: paths can get quite long. Also, datasets can move around. Do we want a
+        # more robust way to identify repeat chunks? Maybe an `Indexer`?
+        #   - for now don't worry about it
+        "dir": str,
+        "count": int,
+        "error_count": int,
+        "error_rate": float,
+        "partitions": object,
+    }
 
     def __init__(self, db_dir: StrOrPath):
         self.db_dir = Path(db_dir)
@@ -57,17 +54,23 @@ class ProcessedLog:
         # two separate dirs?
         log_path = Path(db_dir) / self.PREFIX
         if not log_path.exists():
-            df = self.SCHEMA.empty()
-        else:
-            batches = []
-            for path in sorted(log_path.glob("**/*.log.json")):
-                batches.append(pd.read_json(path, lines=True))
-            if len(batches) == 0:
-                df = self.SCHEMA.empty()
-            else:
-                df = pd.concat(batches, ignore_index=True)
-                df = self.SCHEMA.cast(df)
-                df = df.drop_duplicates(subset="dir", keep="last")
+            return self._empty()
+
+        batches = []
+        for path in sorted(log_path.glob("**/*.log.json")):
+            batches.append(pd.read_json(path, lines=True))
+        if len(batches) == 0:
+            return self._empty()
+
+        df = pd.concat(batches, ignore_index=True)
+        df = df.astype(self.FIELDS)
+        df = df.drop_duplicates(subset="dir", keep="last")
+        return df
+
+    @classmethod
+    def _empty(cls) -> pd.DataFrame:
+        df = pd.DataFrame(columns=list(cls.FIELDS.keys()))
+        df = df.astype(cls.FIELDS)
         return df
 
     def write(
@@ -151,7 +154,7 @@ def _exists(p: str) -> bool:
     return Path(p).exists()
 
 
-def _setup_logging(
+def setup_logging(
     task_id: int,
     log_dir: Optional[StrOrPath] = None,
     level: Union[int, str] = "INFO",

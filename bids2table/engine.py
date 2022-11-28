@@ -13,13 +13,13 @@ from omegaconf import DictConfig, OmegaConf
 from bids2table import utils as ut
 from bids2table.crawler import Crawler
 from bids2table.env import collect_env_info
-from bids2table.handlers import HANDLER_CATALOG, Handler
-from bids2table.indexers import INDEXER_CATALOG, Indexer
-from bids2table.logging import ProcessedLog, _setup_logging
+from bids2table.handlers import HandlerTuple, get_handler
+from bids2table.indexers import Indexer, get_indexer
+from bids2table.logging import ProcessedLog, setup_logging
 from bids2table.writer import BufferedParquetWriter
 
 IndexersMap = Dict[str, Indexer]
-HandlersMap = Dict[str, List[Handler]]
+HandlersMap = Dict[str, List[HandlerTuple]]
 WritersMap = Dict[str, BufferedParquetWriter]
 
 
@@ -32,14 +32,18 @@ def main(cfg: DictConfig):
     if not cfg.dry_run:
         run_log_dir.mkdir(parents=True, exist_ok=True)
 
-    _setup_logging(
+    setup_logging(
         task_id,
-        log_dir=None if cfg.dry_run else run_log_dir,
+        log_dir=(None if cfg.dry_run else run_log_dir),
         level=cfg.log_level,
     )
     logging.info("Starting bids2table")
     logging.info("Config:\n%s", OmegaConf.to_yaml(cfg))
     logging.info("Env:\n%s", collect_env_info())
+
+    if cfg.dry_run and task_id != 0:
+        logging.info("Dry run only supported in head worker (task_id=0); exiting")
+        return
 
     if cfg.include_modules:
         logging.info("Importing include modules")
@@ -51,22 +55,21 @@ def main(cfg: DictConfig):
     logging.info("Loading paths")
     paths = _load_paths(cfg) if task_id == 0 else None
 
-    if cfg.dry_run:
-        logging.info("Completed dry run; exiting")
-        return
-
     paths_path = run_log_dir / "paths_list.txt"
     if task_id == 0 and not paths_path.exists():
         logging.info(f"Saving expanded paths:\n\t{paths_path}")
-        with ut.atomicopen(paths_path, "w") as f:
-            np.savetxt(f, paths, fmt="%s")
+        if not cfg.dry_run:
+            with ut.atomicopen(paths_path, "w") as f:
+                np.savetxt(f, paths, fmt="%s")
     else:
         logging.info(f"Loading expanded paths:\n\t{paths_path}")
         with ut.waitopen(paths_path) as f:
             paths = np.loadtxt(f, dtype=str)
 
     workers_dir = run_log_dir / "workers"
-    workers_dir.mkdir(exist_ok=True)
+    if not cfg.dry_run:
+        workers_dir.mkdir(exist_ok=True)
+
     worker_json = workers_dir / f"{_format_task_id(task_id)}.json"
     if worker_json.exists():
         logging.info(f"Task ID {task_id} was run previously; exiting")
@@ -74,8 +77,9 @@ def main(cfg: DictConfig):
     hostname = socket.gethostname()
     pid = os.getpid()
     logging.info(f"Writing task ID: {task_id}\n\thostname: {hostname}\tpid: {pid}")
-    with open(worker_json, "w") as f:
-        json.dump({"task_id": task_id, "hostname": hostname, "pid": pid}, f)
+    if not cfg.dry_run:
+        with open(worker_json, "w") as f:
+            json.dump({"task_id": task_id, "hostname": hostname, "pid": pid}, f)
 
     logging.info("Partitioning paths")
     paths = _partition_paths(cfg, paths)
@@ -109,15 +113,18 @@ def _generate_tables(
     task_id: int = cfg.workers.task_id
     task_id_str = _format_task_id(task_id)
 
-    crawler = Crawler(handlers_map, indexers_map, **cfg.crawler)
+    crawler = Crawler(indexers_map, handlers_map, **cfg.crawler)
     processed_log = ProcessedLog(cfg.output.db_dir)
 
     writers_map: WritersMap = {}
     for name in indexers_map:
         writer_dir = Path(cfg.output.db_dir) / name / run_id / task_id_str
-        writer_dir.mkdir(parents=True)
         writers_map[name] = BufferedParquetWriter(prefix=str(writer_dir), **cfg.writer)
         logging.info(f"Initialized writer at directory:\n\t{writer_dir}")
+
+    def _flush():
+        for _, writer in writers_map.items():
+            writer.flush(blocking=True)
 
     try:
         for path in paths:
@@ -128,6 +135,9 @@ def _generate_tables(
                 f"\thandle count: {counts.count}\terrors: {counts.error_count}\t"
                 f"error_rate: {counts.error_rate:.3f}"
             )
+
+            if cfg.dry_run:
+                break
 
             partitions = []
             for name, tab in tables.items():
@@ -147,10 +157,14 @@ def _generate_tables(
 
         # TODO: summary stats? throughput?
 
-    finally:
-        # TODO: might not want to flush last if exiting on exception.
-        for name, writer in writers_map.items():
-            writer.flush(blocking=True)
+    except Exception:
+        if cfg.output.flush_on_error and not cfg.dry_run:
+            _flush()
+        raise
+
+    else:
+        if not cfg.dry_run:
+            _flush()
 
 
 def _load_paths(cfg: DictConfig) -> np.ndarray:
@@ -237,24 +251,26 @@ def _initialize_tables(cfg: DictConfig) -> Tuple[IndexersMap, HandlersMap]:
 
         indexer_cfg: DictConfig = table_cfg.indexer.copy()
         indexer_name = indexer_cfg.pop("name")
-        indexer_cls = INDEXER_CATALOG.get(indexer_name)
-        if indexer_cls is None:
-            raise ValueError(f"No indexer found matching '{indexer_name}'")
+        indexer_cls = get_indexer(indexer_name)
         indexer = indexer_cls.from_config(indexer_cfg)
         indexers_map[name] = indexer
-        logging.info("Loaded indexer %s", indexer)
+        logging.info(f"Loaded indexer: {indexer}")
 
-        for handler_name_or_pattern in table_cfg.handlers:
-            handlers = HANDLER_CATALOG.search(handler_name_or_pattern)
-            if len(handlers) == 0:
-                raise ValueError(
-                    f"No handlers found matching '{handler_name_or_pattern}'"
-                )
-            handlers_map[name].extend(handlers)
+        handler_cfg: DictConfig
+        for handler_cfg in table_cfg.handlers:
+            handler_cfg = handler_cfg.copy()
+            handler_name = handler_cfg.pop("name")
+            handler_pattern = handler_cfg.pop("pattern")
+            handler_label = handler_cfg.pop("label")
+            handler_cls = get_handler(handler_name)
+            handler = handler_cls.from_config(handler_cfg)
+            handlers_map[name].append(
+                HandlerTuple(name, handler_pattern, handler_label, handler)
+            )
             logging.info(
-                "Loaded handlers matching '%s':\n\t%s",
-                handler_name_or_pattern,
-                "\n\t".join(handler.name for handler in handlers),
+                f"Loaded handler {handler}\n"
+                f"\tpattern: {handler_pattern}\n"
+                f"\tlabel: {handler_label}"
             )
     return indexers_map, handlers_map
 

@@ -16,18 +16,15 @@ from typing import Iterable, List, Optional, Union
 @contextmanager
 def lockopen(path: Union[str, Path], mode: str = "w", **kwargs):
     """
-    Open a file with an exclusive lock. Yields a tuple ``(first, file)`` where ``first``
-    indicates if the lock acquired without blocking, and ``file`` is the open file.
+    Open a file with an exclusive lock.
     """
-    first = True
     file = open(path, mode, **kwargs)
     try:
         fcntl.flock(file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        first = False
         fcntl.flock(file.fileno(), fcntl.LOCK_EX)
     try:
-        yield first, file
+        yield file
     finally:
         fcntl.flock(file.fileno(), fcntl.LOCK_UN)
         file.close()
@@ -36,7 +33,7 @@ def lockopen(path: Union[str, Path], mode: str = "w", **kwargs):
 @contextmanager
 def atomicopen(path: Union[str, Path], mode: str = "w", **kwargs):
     """
-    Open a file for "atomic" writing. Only write modes are supported.
+    Open a file for "atomic" all-or-nothing writing. Only write modes are supported.
     """
     if mode[0] not in {"w", "x"}:
         raise ValueError(f"Only write modes supported; not '{mode}'")
