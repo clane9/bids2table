@@ -7,7 +7,6 @@ from omegaconf import MISSING
 
 from bids2table import RecordDict, StrOrPath
 from bids2table.schema import Fields, cast_to_schema, create_schema, format_schema
-from bids2table.utils import set_overlap
 
 __all__ = [
     "HandlerConfig",
@@ -38,7 +37,6 @@ class Handler(ABC):
     """
 
     _CAST_WITH_NULL = False
-    OVERLAP_WARN_THRESHOLD = 1.0
 
     def __init__(
         self,
@@ -48,6 +46,8 @@ class Handler(ABC):
         self.fields = fields
         self.metadata = metadata
         self.schema = create_schema(fields, metadata=metadata)
+
+        self._schema_names = set(self.schema.names)
 
     @abstractmethod
     def _load(self, path: StrOrPath) -> Optional[RecordDict]:
@@ -64,13 +64,25 @@ class Handler(ABC):
         """
         record = self._load(path)
         if record is not None:
-            overlap = set_overlap(self.schema.names, record.keys())
-            if overlap < self.OVERLAP_WARN_THRESHOLD:
-                logging.warning(
-                    f"Field overlap between record and schema is only {overlap:.2f}\n"
-                    f"\tpath: {path}\n"
-                    f"\thandler: {self}"
-                )
+            if logging.DEBUG >= logging.root.level:
+                record_names = set(record.keys())
+                schema_diff = self._schema_names - record_names
+                if schema_diff:
+                    logging.debug(
+                        f"Record is missing {len(schema_diff)}/{len(self._schema_names)} "
+                        "fields from schema\n"
+                        f"\tpath: {path}\n"
+                        f"\tmissing fields: {schema_diff}"
+                    )
+                record_diff = record_names - self._schema_names
+                if record_diff:
+                    logging.debug(
+                        f"Record contains {len(record_diff)}/{len(self._schema_names)} "
+                        "extra fields not in schema\n"
+                        f"\tpath: {path}\n"
+                        f"\textra fields: {record_diff}"
+                    )
+
             # We leave out null values so that the record for this handler can be
             # accumulated over several calls and paths.
             record = cast_to_schema(
@@ -82,13 +94,12 @@ class Handler(ABC):
         return record
 
     @classmethod
+    @abstractmethod
     def from_config(cls, cfg: HandlerConfig) -> "Handler":
         """
         Initialze a Handler from a config.
         """
-        if cfg.fields is None:
-            raise ValueError("cfg.fields is required")
-        return cls(fields=cfg.fields, metadata=cfg.metadata)
+        raise NotImplementedError
 
     def __repr__(self) -> str:
         schema_fmt = "\n\t".join(format_schema(self.schema).split("\n"))

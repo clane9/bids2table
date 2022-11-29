@@ -32,6 +32,9 @@ class WrapHandler(Handler):
     A Handler wrapping a ``loader`` function.
     """
 
+    EXAMPLES_PKG = "bids2table.examples"
+    DELETE = "__delete__"
+
     def __init__(
         self,
         loader: Loader,
@@ -63,33 +66,42 @@ class WrapHandler(Handler):
         record = self.apply_renaming(self.rename_map, record)
         return record
 
-    @staticmethod
-    def load_example(loader: Loader, path: StrOrPath) -> Optional[RecordDict]:
+    @classmethod
+    def load_example(cls, loader: Loader, path: StrOrPath) -> Optional[RecordDict]:
         """
         Load an example that may be located as a package resource, absolute path, or a
         relative path under one of the directories in the internal ``PATH``.
         """
-        # TODO: how exactly do you include package resources and is this how we want to
-        # publish examples?
-        if resources.is_resource("bids2table.examples", str(path)):
-            with resources.path("bids2table.examples", str(path)) as p:
-                return loader(p)
-        else:
-            p = find_file(path)
-            if p is None:
-                raise FileNotFoundError(f"Example {path} not found")
+        path = Path(path)
+
+        p = find_file(path)
+        if p is not None:
             return loader(p)
 
-    @staticmethod
+        # TODO: Is this how we want to publish examples?
+        if resources.is_resource(cls.EXAMPLES_PKG, path.name):
+            with resources.path(cls.EXAMPLES_PKG, path.name) as p:
+                return loader(p)
+
+        raise FileNotFoundError(f"Example {path} not found")
+
+    @classmethod
     def apply_renaming(
-        rename_map: Optional[Dict[str, str]], record: Optional[RecordDict]
+        cls, rename_map: Optional[Dict[str, str]], record: Optional[RecordDict]
     ) -> Optional[RecordDict]:
         """
         Apply a renaming map to the keys in ``record``.
         """
         if rename_map is None or record is None:
             return record
-        return {rename_map.get(k, k): v for k, v in record.items()}
+
+        # This may be a bit inefficient, as the rename_map is typically much smaller.
+        # However doing it this way to guarantee the same order.
+        return {
+            rename_map.get(k, k): v
+            for k, v in record.items()
+            if rename_map.get(k) != cls.DELETE
+        }
 
     @classmethod
     def from_config(cls, cfg: WrapHandlerConfig) -> "Handler":  # type: ignore[override]

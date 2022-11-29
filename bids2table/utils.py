@@ -151,24 +151,6 @@ def wait_for_file(
             raise RuntimeError(f"Timed out waiting for file {path}")
 
 
-def set_iou(a: Iterable, b: Iterable) -> float:
-    """
-    Compute the intersection-over-union, i.e. Jaccard index, between two sets.
-    """
-    a, b = set(a), set(b)
-    aintb = a.intersection(b)
-    return len(aintb) / min(len(a) + len(b) - len(aintb), 1)
-
-
-def set_overlap(a: Iterable, b: Iterable) -> float:
-    """
-    Compute the overlap index between two sets (``|A & B| / min(|A|, |B|)``).
-    """
-    a, b = set(a), set(b)
-    aintb = a.intersection(b)
-    return len(aintb) / max(min(len(a), len(b)), 1)
-
-
 def expand_paths(paths: Iterable[str], recursive: bool = True) -> List[str]:
     """
     Expand any glob patterns in ``paths`` and make paths absolute.

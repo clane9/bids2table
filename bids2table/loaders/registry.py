@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, Optional
 
-from . import Loader
+from .loader import Loader
 
 __all__ = ["register_loader", "get_loader"]
 
