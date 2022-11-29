@@ -7,12 +7,6 @@ import pytest
 from bids2table.handlers import WrapHandler, WrapHandlerConfig, get_handler
 from bids2table.loaders import LoaderConfig
 
-logging.basicConfig(
-    format="%(asctime)s %(levelname)-8s %(message)s",
-    level=logging.DEBUG,
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-
 
 @pytest.mark.parametrize(
     "example", ["mriqc_anat_T1w.json", "bids2table/examples/mriqc_anat_T1w.json"]

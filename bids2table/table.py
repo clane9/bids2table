@@ -1,5 +1,4 @@
 import logging
-from collections import defaultdict
 from typing import Any, Dict, Optional, Tuple, Union
 
 import pyarrow as pa
@@ -10,9 +9,11 @@ from bids2table.schema import concat_schemas
 
 class IncrementalTable:
     """
-    A table consisting of one or more column groups that you build incrementally.
+    A table that you can build up incrementally.
 
     Args:
+        index_schema: Schema for the index columns.
+        schema: A schema or group of schemas for the data columns.
         constants: A ``dict`` mapping column labels to constant values.
     """
 
@@ -47,21 +48,22 @@ class IncrementalTable:
             sep=self.SEP,
         )
         self._columns = set(self._combined_schema.names)
-        self._table: Dict[Tuple[Any, ...], RecordDict] = defaultdict(dict)
+        self._table: Dict[Tuple[Any, ...], RecordDict] = {}
 
     def put(self, key: RecordDict, record: RecordDict, group: Optional[str] = None):
         """
         Insert ``record`` at the row indexed by ``key`` under ``group``.
         """
-        key_tup = tuple(key.values())
-        row = self._table[key_tup]
+        key_tup = tuple(key[k] for k in self.index_schema.names)
+        row = self._table.get(key_tup, {})
         if len(row) == 0:
             # initialize the index entries and constants on row creation
             row.update(self._prepend_prefix(key, self.INDEX_PREFIX))
             row.update(self.constants)
 
         if group is not None:
-            assert group in self.groups, f"Unrecognized group '{group}'"
+            if group not in self.groups:
+                raise ValueError(f"Unrecognized group '{group}'")
             record = self._prepend_prefix(record, group)
 
         cols = set(record.keys())
@@ -77,7 +79,9 @@ class IncrementalTable:
                 f"Overwriting the following table columns at row: {key}\n"
                 f"\t{', '.join(updating_cols)}"
             )
+
         row.update(record)
+        self._table[key_tup] = row
 
     @classmethod
     def _prepend_prefix(cls, record: RecordDict, prefix: str) -> RecordDict:
