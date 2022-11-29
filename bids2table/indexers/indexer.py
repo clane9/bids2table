@@ -64,14 +64,16 @@ class Indexer(Handler):
     def set_root(self, dirpath: StrOrPath) -> None:
         """
         (Re-)Initialize the root directory.
+
+        This can be used, for example, to initialize some indexing metadata that are
+        shared by all files in a directory.
         """
         self.root = Path(dirpath)
 
     @classmethod
+    @abstractmethod
     def from_config(cls, cfg: IndexerConfig) -> "Indexer":  # type: ignore[override]
         """
         Initialze an Indexer from a config.
         """
-        if cfg.fields is None:
-            raise ValueError("cfg.fields is required")
-        return cls(fields=cfg.fields, metadata=cfg.metadata)
+        raise NotImplementedError

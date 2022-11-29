@@ -26,6 +26,18 @@ BIDS_DTYPES: Dict[str, type] = {
 }
 
 
+class BIDS_PATTERNS:
+    """
+    Regex patterns for a few BIDS entitites
+
+        - suffix: ``"abc_bold.nii.gz"`` -> ``"bold"``
+        - extension: ``"abc_bold.nii.gz"`` -> ``".nii.gz"``
+    """
+
+    suffix = r"_([a-zA-Z0-9]*?)\.[^/]+$"
+    extension = r".*?(\.[^/]+)$"
+
+
 @dataclass
 class BIDSEntityConfig:
     name: str = MISSING
@@ -76,7 +88,7 @@ class BIDSEntity:
         if key is None:
             key = name
         if pattern is None:
-            pattern = f"[_/]{key}-(.+?)[._/]"
+            pattern = f"(?:[_/]|^){key}-(.+?)(?:[._/]|$)"
         if not (dtype in BIDS_DTYPES or dtype in BIDS_DTYPES.values()):
             raise ValueError(
                 f"Unexpected dtype {dtype}; expected one of "
@@ -86,9 +98,10 @@ class BIDSEntity:
         self.name = name
         self.key = key
         self.pattern = pattern
-        self.dtype = BIDS_DTYPES[dtype] if isinstance(dtype, str) else dtype
+        self.dtype = dtype
         self.required = required
 
+        self._dtype = BIDS_DTYPES[dtype] if isinstance(dtype, str) else dtype
         self._p = re.compile(pattern)
         if self._p.groups != 1:
             raise ValueError(
@@ -102,11 +115,11 @@ class BIDSEntity:
 
         Note that the path is first converted to posix with forward (/) slashes.
         """
-        path = Path(path).absolute().as_posix()
+        path = Path(path).as_posix()
         match = self._p.search(path)
         if match is None:
             return None
-        value = self.dtype(match.group(1))
+        value = self._dtype(match.group(1))
         return value
 
     @classmethod
@@ -120,6 +133,13 @@ class BIDSEntity:
             pattern=cfg.pattern,
             dtype=cfg.dtype,
             required=cfg.required,
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(name='{self.name}', key='{self.key}', "
+            f"pattern={repr(self.pattern)}, dtype={repr(self.dtype)}, "
+            f"required={self.required})"
         )
 
 
@@ -143,8 +163,13 @@ class BIDSIndexer(Indexer):
 
     def _load(self, path: StrOrPath) -> Optional[RecordDict]:
         path = Path(path)
-        record = {col.name: col.search(path) for col in self.columns}
-        return record
+        key = {}
+        for col in self.columns:
+            val = col.search(path)
+            if col.required and val is None:
+                raise RuntimeError(f'Missing required field "{col.name}" in {path}')
+            key[col.name] = val
+        return key
 
     @classmethod
     def from_config(cls, cfg: BIDSIndexerConfig) -> "BIDSIndexer":  # type: ignore[override]
