@@ -29,11 +29,14 @@ T = TypeVar("T")
 
 class PatternLUT(Generic[T]):
     """
-    Lookup table mapping glob file patterns to arbitrary values. Supports querying for
-    matching values by a file path.
+    Lookup table for finding all matching patterns (and values) for a query string.
 
     Args:
-        items: List of ``(pattern, value)`` tuples making up the lookup table.
+        items: List of ``(pattern, value)`` tuples making up the lookup table. Only
+            basic glob patterns are supported. The ``'*'`` wildcard matches any zero or
+            more characters including the path separator. Patterns should use the posix
+            path separator ``'/'``. Patterns without any path separators are matched
+            only to the base file name.
 
     .. note::
         If matched files are expected to have a suffix, e.g. ".txt", the pattern must
@@ -48,7 +51,7 @@ class PatternLUT(Generic[T]):
         for pattern, val in items:
             if pattern[-1] in "]*?":
                 logging.warning(
-                    "Pattern '{pattern}' ends in a special character, assuming "
+                    f"Pattern '{pattern}' ends in a special character, assuming "
                     "empty suffix"
                 )
                 suffix = ""
@@ -66,7 +69,8 @@ class PatternLUT(Generic[T]):
             #   - tuples of globs
             #   - arbitrary regex
             # But better to keep things simple for now.
-            if fnmatch(str(path), pattern):
+            query = path.as_posix() if "/" in pattern else path.name
+            if fnmatch(query, pattern):
                 yield pattern, val
 
 
