@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -79,12 +79,10 @@ class Config:
     tables: List[TableConfig] = MISSING
 
     # Crawler kwargs
-    crawler: Dict[str, Any] = field(
-        default_factory=lambda: {"max_threads": 8, "max_failures": None}
-    )
+    crawler: Optional[Dict[str, Any]] = None
 
     # BufferedParquetWriter kwargs
-    writer: Dict[str, Any] = field(default_factory=lambda: {"partition_size": "64MiB"})
+    writer: Optional[Dict[str, Any]] = None
 
     # List of python modules to import for e.g. Handler and Indexer definitions.
     # TODO:

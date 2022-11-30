@@ -18,6 +18,7 @@ def test_wrap_handler(example: str):
         fields={"EFC": "float32", "_dummy": "str"},
         metadata={"_dummy": "some missing data"},
         rename_map={"efc": "EFC", "fber": WrapHandler.DELETE},
+        overlap_threshold=0.5,
     )
     cls = get_handler(cfg.name)
     handler = cls.from_config(cfg)
@@ -36,6 +37,10 @@ def test_wrap_handler(example: str):
     assert "fber" not in record
     # check that the efc type is updated
     assert handler.schema.field("EFC").type == "float32"
+
+    with pytest.raises(ValueError):
+        with resources.path(WrapHandler.EXAMPLES_PKG, "mriqc_func_bold.json") as p:
+            record = handler(p)
 
 
 if __name__ == "__main__":
