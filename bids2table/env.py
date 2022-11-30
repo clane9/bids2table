@@ -5,9 +5,6 @@ import numpy as np
 import omegaconf
 import pandas as pd
 import pyarrow as pa
-
-# For some reason mypy doesn't find the type annotations for tabulate
-# See also: https://github.com/python/mypy/issues/9944
 from tabulate import tabulate
 
 import bids2table

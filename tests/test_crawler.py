@@ -83,6 +83,7 @@ def sloppy_crawler():
 def test_crawler(crawler: Crawler, dirpath: str):
     tables, errs, counts = crawler.crawl(DATA_DIR / "ds000102-mriqc" / dirpath)
     assert counts.error_count == len(errs) == 0
+    assert counts.error_rate == 0
 
     anat_df = tables["anat"].to_pandas()
     func_df = tables["func"].to_pandas()
@@ -100,6 +101,7 @@ def test_crawler_errors(
 ):
     _, errs, counts = sloppy_crawler.crawl(DATA_DIR / "ds000102-mriqc" / dirpath)
     assert counts.error_count == len(errs) == expected_error_count
+    assert list(errs[0].to_dict().keys()) == ["path", "pattern", "handler", "exception"]
 
 
 if __name__ == "__main__":
