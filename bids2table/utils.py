@@ -80,10 +80,7 @@ def lockopen(path: Union[str, Path], mode: str = "w", **kwargs):
     Open a file with an exclusive lock.
     """
     file = open(path, mode, **kwargs)
-    try:
-        fcntl.flock(file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        fcntl.flock(file.fileno(), fcntl.LOCK_EX)
+    fcntl.flock(file.fileno(), fcntl.LOCK_EX)
     try:
         yield file
     finally:
@@ -148,6 +145,8 @@ def wait_for_file(
     Wait for a file to exist.
     """
     path = Path(path)
+    if timeout:
+        delay = min(delay, timeout / 2)
     start = time.monotonic()
     while not path.exists():
         time.sleep(delay)
@@ -155,10 +154,16 @@ def wait_for_file(
             raise RuntimeError(f"Timed out waiting for file {path}")
 
 
-def expand_paths(paths: Iterable[str], recursive: bool = True) -> List[str]:
+def expand_paths(
+    paths: Iterable[str],
+    recursive: bool = True,
+    root: Optional[Union[str, Path]] = None,
+) -> List[str]:
     """
     Expand any glob patterns in ``paths`` and make paths absolute.
     """
+    if root is not None:
+        root = Path(root)
 
     def abspath(path: str) -> str:
         return str(Path(path).absolute())
@@ -166,6 +171,8 @@ def expand_paths(paths: Iterable[str], recursive: bool = True) -> List[str]:
     special_chars = set("[]*?")
     expanded_paths = []
     for path in paths:
+        if root is not None:
+            path = str(root / path)
         if special_chars.isdisjoint(path):
             expanded_paths.append(abspath(path))
         else:
@@ -189,7 +196,7 @@ def parse_size(size: str) -> int:
     }
     units_lower = {k.lower(): v for k, v in units.items()}
 
-    pattern = "(.*?)({units})".format(units="|".join(units_lower.keys()))
+    pattern = r"([0-9.\s]+)({units})".format(units="|".join(units_lower.keys()))
     match = re.match(pattern, size, flags=re.IGNORECASE)
     if match is None:
         raise ValueError(
@@ -203,27 +210,32 @@ def parse_size(size: str) -> int:
     return bytesize
 
 
-def import_module_from_path(path: Union[str, Path], append_sys_path: bool = True):
+def import_module_from_path(path: Union[str, Path], prepend_sys_path: bool = True):
     """
-    Import a module from a file or directory path.
+    Import a module or package from a file or directory path.
     """
     path = Path(path).absolute()
     parent = path.parent
-    if append_sys_path and str(parent) not in sys.path:
-        sys.path.append(str(parent))
-
     module_name = path.stem
+    logging.info("Importing %s from %s", module_name, path)
+    with insert_sys_path(str(parent), prepend=prepend_sys_path):
+        importlib.import_module(module_name)
+
+
+@contextmanager
+def insert_sys_path(path: str, prepend: bool = True):
+    """
+    Context manager to temporarily insert a path in ``sys.path``.
+    """
+    inserted = False
+    if path not in sys.path:
+        if prepend:
+            sys.path.insert(0, path)
+        else:
+            sys.path.append(path)
+        inserted = True
     try:
-        if module_name not in sys.modules:
-            logging.info("Importing %s from %s", module_name, path)
-            importlib.import_module(module_name)
-    except ModuleNotFoundError:
-        logging.warning("Unable to import %s from %s", module_name, path)
-
-
-def combined_suffix(path: Union[str, Path]) -> str:
-    """
-    Return the combined suffix(es) of a path. E.g. ``'library.tar.gz'`` ->
-    ``'.tar.gz'``.
-    """
-    return "".join(Path(path).suffixes)
+        yield sys.path
+    finally:
+        if inserted:
+            sys.path.remove(path)
