@@ -12,7 +12,7 @@ DATA_DIR = Path(__file__).parent / "data"
 
 
 @pytest.fixture(scope="module")
-def crawler() -> Crawler:
+def crawler():
     anat_indexer = bids.BIDSIndexer.from_config(
         bids.BIDSIndexerConfig(
             columns=[bids.BIDSEntityConfig(name="subject", key="sub", required=True)]
@@ -47,11 +47,12 @@ def crawler() -> Crawler:
         "func": [HandlerTuple("func", "*_bold.json", "mriqc_func_bold", func_handler)],
     }
     crawler = Crawler(indexers_map=indexers_map, handlers_map=handlers_map)
-    return crawler
+    yield crawler
+    crawler.close()
 
 
 @pytest.fixture(scope="module")
-def sloppy_crawler() -> Crawler:
+def sloppy_crawler():
     func_indexer = bids.BIDSIndexer.from_config(
         bids.BIDSIndexerConfig(
             columns=[
@@ -74,7 +75,8 @@ def sloppy_crawler() -> Crawler:
         "func": [HandlerTuple("func", "*.json", "mriqc_func_bold", func_handler)],
     }
     sloppy_crawler = Crawler(indexers_map=indexers_map, handlers_map=handlers_map)
-    return sloppy_crawler
+    yield sloppy_crawler
+    sloppy_crawler.close()
 
 
 @pytest.mark.parametrize("dirpath", ["sub-01", "sub-02"])

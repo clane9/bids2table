@@ -68,6 +68,7 @@ class Crawler:
         self._handler_lut = PatternLUT(
             [(h.pattern, h) for handlers in handlers_map.values() for h in handlers]
         )
+        self._pool = ThreadPool(self.max_threads)
 
     def crawl(
         self, dirpath: StrOrPath
@@ -94,25 +95,24 @@ class Crawler:
         count, err_count = 0, 0
         errors = []
 
-        with ThreadPool(self.max_threads) as pool:
-            # Lazy streaming evaluation using ``imap_unordered`` applied to a generator.
-            # NOTE: Using ``ThreadPool`` instead of the more modern
-            # ``ThreadPoolExecutor`` bc it doesn't support this lazy evaluation.
-            for val in pool.imap_unordered(
-                taskfn, self._scan_for_matches(dirpath, self._handler_lut)
-            ):
-                handler, data, err = val
-                if data is not None:
-                    key, record = data
-                    tables[handler.group].put(key, record, handler.label)
-                    count += 1
-                if err is not None:
-                    errors.append(err)
-                    err_count += 1
-                    if self.max_failures and len(errors) >= self.max_failures:
-                        raise RuntimeError(
-                            f"Max number of failures {self.max_failures} exceeded"
-                        )
+        # Lazy streaming evaluation using ``imap_unordered`` applied to a generator.
+        # NOTE: Using ``ThreadPool`` instead of the more modern
+        # ``ThreadPoolExecutor`` bc it doesn't support this lazy evaluation.
+        for val in self._pool.imap_unordered(
+            taskfn, self._scan_for_matches(dirpath, self._handler_lut)
+        ):
+            handler, data, err = val
+            if data is not None:
+                key, record = data
+                tables[handler.group].put(key, record, handler.label)
+                count += 1
+            if err is not None:
+                errors.append(err)
+                err_count += 1
+                if self.max_failures and len(errors) >= self.max_failures:
+                    raise RuntimeError(
+                        f"Max number of failures {self.max_failures} exceeded"
+                    )
 
         tables = {group: table.as_table() for group, table in tables.items()}
         return tables, errors, CrawlCounts(count, err_count)
@@ -216,3 +216,15 @@ class Crawler:
 
         data = None if record is None else (key, record)
         return data, err
+
+    def close(self):
+        """
+        Close the crawler's thread pool
+        """
+        self._pool.close()
+
+    def __enter__(self) -> "Crawler":
+        return self
+
+    def __exit__(self, *args):
+        self.close()
