@@ -6,6 +6,7 @@ from typing import Optional, Union
 import pyarrow as pa
 from pyarrow import parquet as pq
 
+from bids2table import StrOrPath
 from bids2table.utils import atomicopen, parse_size
 
 
@@ -34,10 +35,10 @@ class BufferedParquetWriter:
 
     def __init__(
         self,
-        prefix: str,
+        prefix: StrOrPath,
         partition_size: Union[str, int] = "64 MiB",
     ):
-        self.prefix = prefix
+        self.prefix = Path(prefix)
         self.partition_size = partition_size
 
         if isinstance(partition_size, str):
@@ -56,9 +57,6 @@ class BufferedParquetWriter:
         """
         Write a batch to the stream. If this is the first batch, the schema and stream
         will be initialized. Returns the path to the partition containing this batch.
-
-        TODO: simplify the interface to only accept pa tables
-            - this also simplifies the requirements of the schema
         """
         if self._table is None:
             self._table = batch
@@ -67,21 +65,16 @@ class BufferedParquetWriter:
         self._batch_count += 1
         partition = self.path()
         if self._table.get_total_buffer_size() > self._partition_size_bytes:
-            self.flush()
+            self.flush(blocking=False)
         return partition
 
     def path(self) -> str:
         """
         Return the path for the current partition.
         """
-        prefix = Path(self.prefix)
-        if prefix.is_dir():
-            path = str(prefix / f"{self._part:04d}.parquet")
-        else:
-            path = f"{self.prefix}-{self._part:04d}.parquet"
-        return path
+        return str(self.prefix / f"{self._part:04d}.parquet")
 
-    def flush(self, blocking: bool = False):
+    def flush(self, blocking: bool = True):
         """
         Flush the table buffer.
         """
@@ -96,8 +89,8 @@ class BufferedParquetWriter:
             table_bytes = self._table.get_total_buffer_size()
             logging.info(
                 "Flushing to partition\n"
-                f"\tbatches: [{self._part_batch_start}, {self._batch_count}]\n"
-                f"\tMB: {table_bytes / 1e6}\n"
+                f"\tbatches: [{self._part_batch_start}, {self._batch_count})\n"
+                f"\tMB: {table_bytes / 1e6:.2f}\n"
                 f"\tpath: {self.path()}"
             )
             self._future = self._pool.submit(
@@ -121,5 +114,6 @@ class BufferedParquetWriter:
     def __enter__(self) -> "BufferedParquetWriter":
         return self
 
-    def __exit__(self):
+    def __exit__(self, *args):
         self.flush()
+        logging.info("Writer shutting down")
