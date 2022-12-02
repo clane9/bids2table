@@ -78,6 +78,8 @@ class PatternLUT(Generic[T]):
 def lockopen(path: Union[str, Path], mode: str = "w", **kwargs):
     """
     Open a file with an exclusive lock.
+
+    See also: https://github.com/dmfrey/FileLock/blob/master/filelock/filelock.py
     """
     file = open(path, mode, **kwargs)
     fcntl.flock(file.fileno(), fcntl.LOCK_EX)

@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Tuple
 
 import pytest
 
@@ -15,7 +16,7 @@ DATA_DIR = Path(__file__).parent / "data"
 def crawler():
     anat_indexer = bids.BIDSIndexer.from_config(
         bids.BIDSIndexerConfig(
-            columns=[bids.BIDSEntityConfig(name="subject", key="sub", required=True)]
+            columns=[bids.BIDSEntityConfig(name="subject", key="sub")]
         )
     )
     anat_handler = WrapHandler.from_config(
@@ -28,7 +29,7 @@ def crawler():
     func_indexer = bids.BIDSIndexer.from_config(
         bids.BIDSIndexerConfig(
             columns=[
-                bids.BIDSEntityConfig(name="subject", key="sub", required=True),
+                bids.BIDSEntityConfig(name="subject", key="sub"),
                 bids.BIDSEntityConfig(name="task"),
                 bids.BIDSEntityConfig(name="run"),
             ]
@@ -53,10 +54,13 @@ def crawler():
 
 @pytest.fixture(scope="module")
 def sloppy_crawler():
+    """
+    This crawler uses a file pattern that is too broad resulting in bad matches
+    """
     func_indexer = bids.BIDSIndexer.from_config(
         bids.BIDSIndexerConfig(
             columns=[
-                bids.BIDSEntityConfig(name="subject", key="sub", required=True),
+                bids.BIDSEntityConfig(name="subject", key="sub"),
                 bids.BIDSEntityConfig(name="task"),
                 bids.BIDSEntityConfig(name="run"),
             ]
@@ -71,7 +75,6 @@ def sloppy_crawler():
 
     indexers_map = {"func": func_indexer}
     handlers_map = {
-        # note the pattern is too broad
         "func": [HandlerTuple("func", "*.json", "mriqc_func_bold", func_handler)],
     }
     sloppy_crawler = Crawler(indexers_map=indexers_map, handlers_map=handlers_map)
@@ -82,8 +85,8 @@ def sloppy_crawler():
 @pytest.mark.parametrize("dirpath", ["sub-01", "sub-02"])
 def test_crawler(crawler: Crawler, dirpath: str):
     tables, errs, counts = crawler.crawl(DATA_DIR / "ds000102-mriqc" / dirpath)
-    assert counts.error_count == len(errs) == 0
-    assert counts.error_rate == 0
+    assert counts.total == counts.process == 3
+    assert counts.error == len(errs) == 0
 
     anat_df = tables["anat"].to_pandas()
     func_df = tables["func"].to_pandas()
@@ -94,14 +97,26 @@ def test_crawler(crawler: Crawler, dirpath: str):
 
 
 @pytest.mark.parametrize(
-    ("dirpath", "expected_error_count"), [("sub-01", 1), ("sub_bad", 2)]
+    (
+        "dirpath",
+        "expected_counts",
+    ),
+    [("sub-01", (3, 2, 0)), ("sub_bad", (5, 2, 1))],
 )
-def test_crawler_errors(
-    sloppy_crawler: Crawler, dirpath: str, expected_error_count: int
+def test_crawler_skips_errors(
+    sloppy_crawler: Crawler,
+    dirpath: str,
+    expected_counts: Tuple[int, int, int],
 ):
     _, errs, counts = sloppy_crawler.crawl(DATA_DIR / "ds000102-mriqc" / dirpath)
-    assert counts.error_count == len(errs) == expected_error_count
-    assert list(errs[0].to_dict().keys()) == ["path", "pattern", "handler", "exception"]
+    exp_total, exp_processed, exp_error = expected_counts
+    assert counts.total == exp_total
+    assert counts.process == exp_processed
+    assert counts.error == len(errs) == exp_error
+
+    if len(errs) > 0:
+        err_dict = errs[0].to_dict()
+        assert list(err_dict.keys()) == ["path", "pattern", "handler", "exception"]
 
 
 if __name__ == "__main__":

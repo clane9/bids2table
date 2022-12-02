@@ -7,7 +7,7 @@ from omegaconf import MISSING
 
 from bids2table import RecordDict, StrOrPath
 from bids2table.handlers import Handler
-from bids2table.schema import Fields
+from bids2table.schema import DataType
 
 __all__ = ["IndexerConfig", "Indexer"]
 
@@ -27,6 +27,8 @@ class Indexer(Handler):
     It is implemented as a special kind of ``Handler`` with additional methods enabling
     it to access the broader directory context.
 
+    Importantly, all fields in an ``Indexer`` are required.
+
     Sub-classes must implement:
 
     - ``_load()``: generate the row "key" record for given path.
@@ -36,14 +38,14 @@ class Indexer(Handler):
     - ``set_root()``: update the root directory context.
     """
 
-    _CAST_WITH_NULL = True
+    CAST_WITH_NULL = True
 
     def __init__(
         self,
-        fields: Fields,
+        fields: Dict[str, DataType],
         metadata: Optional[Dict[str, str]] = None,
     ):
-        super().__init__(fields, metadata)
+        super().__init__(fields, metadata, overlap_threshold=1.0)
         self.root: Optional[Path] = None
 
     @abstractmethod

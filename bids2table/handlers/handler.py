@@ -1,3 +1,4 @@
+import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -6,7 +7,7 @@ from typing import Dict, NamedTuple, Optional
 from omegaconf import MISSING
 
 from bids2table import RecordDict, StrOrPath
-from bids2table.schema import Fields, cast_to_schema, create_schema, format_schema
+from bids2table.schema import DataType, cast_to_schema, create_schema, format_schema
 
 __all__ = [
     "HandlerConfig",
@@ -22,7 +23,8 @@ class HandlerConfig:
     label: str = MISSING
     fields: Optional[Dict[str, str]] = MISSING
     metadata: Optional[Dict[str, str]] = None
-    overlap_threshold: float = 0.25
+    rename_map: Optional[Dict[str, str]] = None
+    overlap_threshold: float = 0.5
 
 
 class Handler(ABC):
@@ -37,20 +39,34 @@ class Handler(ABC):
     Sub-classes may want to specialize other methods as needed.
     """
 
-    _CAST_WITH_NULL = False
+    # Include missing fields with null values in output records.
+    # By leaving out null values, the record for this handler can be accumulated over
+    # several calls and paths.
+    CAST_WITH_NULL = False
+    # Special delete symbol for rename map.
+    # In general, the purpose of the rename map is to support concise configs leveraging
+    # config inheritance.
+    DELETE = "__delete__"
 
     def __init__(
         self,
-        fields: Fields,
+        fields: Dict[str, DataType],
         metadata: Optional[Dict[str, str]] = None,
+        rename_map: Optional[Dict[str, str]] = None,
         overlap_threshold: float = 0.5,
     ):
         self.fields = fields
         self.metadata = metadata
+        self.rename_map = rename_map
         self.overlap_threshold = overlap_threshold
-        self.schema = create_schema(fields, metadata=metadata)
+
+        # apply renaming to fields
+        fields_ = self.apply_renaming(rename_map, fields)
+        self.schema = create_schema(fields_, metadata=metadata)
 
         self._schema_names = set(self.schema.names)
+        self._schema_fmt = "\n\t".join(format_schema(self.schema).split("\n"))
+        self._id = hex(id(self))[2:]
 
     @abstractmethod
     def _load(self, path: StrOrPath) -> Optional[RecordDict]:
@@ -66,40 +82,55 @@ class Handler(ABC):
         record can't be generated.
         """
         record = self._load(path)
-        if record is not None:
-            record_names = set(record.keys())
-            schema_diff = self._schema_names - record_names
-            if schema_diff:
-                logging.debug(
-                    f"Record is missing {len(schema_diff)}/{len(self._schema_names)} "
-                    "fields from schema\n"
-                    f"\tpath: {path}\n"
-                    f"\tmissing fields: {schema_diff}"
-                )
-            record_diff = record_names - self._schema_names
-            if record_diff:
-                logging.debug(
-                    f"Record contains {len(record_diff)}/{len(record_names)} "
-                    "extra fields not in schema\n"
-                    f"\tpath: {path}\n"
-                    f"\textra fields: {record_diff}"
-                )
-            overlap = 1 - len(record_diff) / len(record_names)
-            if overlap < self.overlap_threshold:
-                raise ValueError(
-                    f"Record doesn't match schema; overlap is only {100*overlap:.0f}% "
-                    f"< {100*self.overlap_threshold:.0f}%; "
-                )
+        record = self.apply_renaming(self.rename_map, record)
+        if not record:
+            return record
 
-            # We leave out null values so that the record for this handler can be
-            # accumulated over several calls and paths.
-            record = cast_to_schema(
-                record,
-                schema=self.schema,
-                safe=True,
-                with_null=self._CAST_WITH_NULL,
+        record_names = set(record.keys())
+        schema_diff = self._schema_names - record_names
+        record_diff = record_names - self._schema_names
+        # |record & schema| / |schema|
+        overlap = (len(record_names) - len(record_diff)) / len(self._schema_names)
+        if overlap < 1.0:
+            logging.info(
+                f"Record overlap with schema is only {overlap:.2f}\n"
+                f"\tpath: {path}\n"
+                f"\tmissing fields: {schema_diff}\n"
+                f"\textra fields: {record_diff}\n"
+                f"\thandler: {repr(self)}"
             )
+            if overlap < self.overlap_threshold:
+                logging.warning(
+                    f"Record overlap {overlap:.2f} < {self.overlap_threshold}; "
+                    "discarding"
+                )
+                return None
+
+        record = cast_to_schema(
+            record,
+            schema=self.schema,
+            safe=True,
+            with_null=self.CAST_WITH_NULL,
+        )
         return record
+
+    @classmethod
+    def apply_renaming(
+        cls, rename_map: Optional[Dict[str, str]], record: Optional[RecordDict]
+    ) -> Optional[RecordDict]:
+        """
+        Apply a renaming map to the keys in ``record``.
+        """
+        if not (rename_map and record):
+            return record
+
+        # This may be a bit inefficient, as the rename_map is typically much smaller.
+        # However doing it this way to guarantee the same order.
+        return {
+            rename_map.get(k, k): v
+            for k, v in record.items()
+            if rename_map.get(k) != cls.DELETE
+        }
 
     @classmethod
     @abstractmethod
@@ -109,9 +140,22 @@ class Handler(ABC):
         """
         raise NotImplementedError
 
+    def id(self) -> str:
+        """
+        Return the unique handler ID (generated from the memory address)
+        """
+        return self._id
+
     def __repr__(self) -> str:
-        schema_fmt = "\n\t".join(format_schema(self.schema).split("\n"))
-        return f"{self.__class__.__name__}:\n\t{schema_fmt}"
+        return f"<{self.__class__.__name__} {self.id()}>"
+
+    def __str__(self) -> str:
+        return (
+            f"{repr(self)}:\n"
+            f"\tschema: {self._schema_fmt}\n"
+            f"\trename_map: {json.dumps(self.rename_map)}\n"
+            f"\toverlap_threshold: {self.overlap_threshold}"
+        )
 
 
 class HandlerTuple(NamedTuple):

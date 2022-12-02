@@ -15,8 +15,11 @@ def test_wrap_handler(example: str):
     cfg = WrapHandlerConfig(
         loader=LoaderConfig(name="load_json_dict", kwargs={"nested": False}),
         example=Path(example),
+        # overwrite a datatype, add an extra field
         fields={"EFC": "float32", "_dummy": "str"},
+        # set metadata for the extra field
         metadata={"_dummy": "some missing data"},
+        # rename one field, delete another
         rename_map={"efc": "EFC", "fber": WrapHandler.DELETE},
         overlap_threshold=0.5,
     )
@@ -38,9 +41,9 @@ def test_wrap_handler(example: str):
     # check that the efc type is updated
     assert handler.schema.field("EFC").type == "float32"
 
-    with pytest.raises(ValueError):
-        with resources.path(WrapHandler.EXAMPLES_PKG, "mriqc_func_bold.json") as p:
-            record = handler(p)
+    with resources.path(WrapHandler.EXAMPLES_PKG, "mriqc_func_bold.json") as p:
+        record = handler(p)
+        assert record is None
 
 
 if __name__ == "__main__":

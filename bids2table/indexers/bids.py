@@ -1,3 +1,4 @@
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,7 @@ BIDS_DTYPES: Dict[str, type] = {
 }
 
 
+# TODO: generalize this to defaults per known name
 class BIDS_PATTERNS:
     """
     Regex patterns for a few BIDS entitites
@@ -44,15 +46,14 @@ class BIDSEntityConfig:
     key: Optional[str] = None
     pattern: Optional[str] = None
     dtype: str = "str"
-    required: bool = False
 
 
 @dataclass
 class BIDSIndexerConfig(IndexerConfig):
     name: str = "bids_indexer"
     columns: List[BIDSEntityConfig] = MISSING
-    fields: None = None
-    metadata: None = None
+    fields: Optional[Dict[str, str]] = None
+    metadata: Optional[Dict[str, str]] = None
 
 
 class BIDSEntity:
@@ -66,7 +67,6 @@ class BIDSEntity:
             (capturing group to capture the value. Should use a posix path separator (/)
             regardless of platform. (default: ``"[_/]{key}-(.+?)[._/]"``).
         dtype: Type name or type.
-        required: Whether the entity is required.
 
     .. note::
         The implementation closely follows ``pybids.layout.Entity`` from `PyBIDS`_. For
@@ -83,7 +83,6 @@ class BIDSEntity:
         key: Optional[str] = None,
         pattern: Optional[str] = None,
         dtype: Union[str, type] = "str",
-        required: bool = False,
     ):
         if key is None:
             key = name
@@ -99,7 +98,6 @@ class BIDSEntity:
         self.key = key
         self.pattern = pattern
         self.dtype = dtype
-        self.required = required
 
         self._dtype = BIDS_DTYPES[dtype] if isinstance(dtype, str) else dtype
         self._p = re.compile(pattern)
@@ -132,14 +130,12 @@ class BIDSEntity:
             key=cfg.key,
             pattern=cfg.pattern,
             dtype=cfg.dtype,
-            required=cfg.required,
         )
 
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         return (
             f"{self.__class__.__name__}(name='{self.name}', key='{self.key}', "
-            f"pattern={repr(self.pattern)}, dtype={repr(self.dtype)}, "
-            f"required={self.required})"
+            f"pattern={repr(self.pattern)}, dtype={repr(self.dtype)})"
         )
 
 
@@ -166,8 +162,9 @@ class BIDSIndexer(Indexer):
         key = {}
         for col in self.columns:
             val = col.search(path)
-            if col.required and val is None:
-                raise RuntimeError(f'Missing required field "{col.name}" in {path}')
+            if val is None:
+                logging.info(f"Missing index field '{col.name}' in {path}; discarding")
+                return None
             key[col.name] = val
         return key
 
@@ -176,5 +173,7 @@ class BIDSIndexer(Indexer):
         """
         Create a BIDS indexer from a config.
         """
+        if cfg.fields or cfg.metadata:
+            logging.warning("fields and metadata are not used in BIDSIndexerConfig")
         columns = [BIDSEntity.from_config(entcfg) for entcfg in cfg.columns]
         return cls(columns=columns)

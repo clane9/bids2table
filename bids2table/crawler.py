@@ -28,12 +28,16 @@ class HandlingFailure:
 
 @dataclass
 class CrawlCounts:
-    count: int
-    error_count: int
+    total: int = 0
+    process: int = 0
+    error: int = 0
 
     @property
     def error_rate(self) -> float:
-        return self.error_count / self.count
+        return self.error / max(self.total, 1)
+
+    def to_dict(self):
+        return self.__dict__.copy()
 
 
 class Crawler:
@@ -92,7 +96,7 @@ class Crawler:
         constants = {"_dir": str(dirpath)}
         tables = self._new_tables(constants)
 
-        count, err_count = 0, 0
+        counts = CrawlCounts()
         errors = []
 
         # Lazy streaming evaluation using ``imap_unordered`` applied to a generator.
@@ -102,20 +106,21 @@ class Crawler:
             taskfn, self._scan_for_matches(dirpath, self._handler_lut)
         ):
             handler, data, err = val
+            counts.total += 1
             if data is not None:
                 key, record = data
                 tables[handler.group].put(key, record, handler.label)
-                count += 1
+                counts.process += 1
             if err is not None:
                 errors.append(err)
-                err_count += 1
+                counts.error += 1
                 if self.max_failures and len(errors) >= self.max_failures:
                     raise RuntimeError(
                         f"Max number of failures {self.max_failures} exceeded"
                     )
 
         tables = {group: table.as_table() for group, table in tables.items()}
-        return tables, errors, CrawlCounts(count, err_count)
+        return tables, errors, counts
 
     def _new_tables(
         self,
@@ -182,7 +187,7 @@ class Crawler:
                 f"\tdirpath: {indexer.root}\n"
                 f"\tpath: {path}\n"
                 f"\tpattern: {handler.pattern}\n"
-                f"\tindexer: {indexer}\n\n" + traceback.format_exc() + "\n"
+                f"\tindexer: {repr(indexer)}\n\n" + traceback.format_exc() + "\n"
             )
             key = None
             err = HandlingFailure(path, handler.pattern, repr(indexer), repr(exc))
@@ -202,7 +207,9 @@ class Crawler:
                 f"\tdirpath: {indexer.root}\n"
                 f"\tpath: {path}\n"
                 f"\tpattern: {handler.pattern}\n"
-                f"\thandler: {handler.handler}\n\n" + traceback.format_exc() + "\n"
+                f"\thandler: {repr(handler.handler)}\n\n"
+                + traceback.format_exc()
+                + "\n"
             )
             record = None
             # TODO: this might be too much data for each failure. especially the full

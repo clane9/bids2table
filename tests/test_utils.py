@@ -133,7 +133,8 @@ def test_expand_paths():
 
 
 @pytest.mark.parametrize(
-    ("alias", "expected"), [("1GB", int(1e9)), ("1  gb", int(1e9)), ("7.23 KiB", 7403)]
+    ("alias", "expected"),
+    [("1GB", int(1e9)), ("1  gb", int(1e9)), ("7.23 KiB", 7403), (" 1 KB ", 1000)],
 )
 def test_parse_size(alias: str, expected: int):
     size = ut.parse_size(alias)
