@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from hydra.core.config_store import ConfigStore
@@ -42,24 +41,25 @@ class PathsConfig:
 @dataclass
 class TableConfig:
     # Table name
-    name: str = MISSING
+    name: str
 
     # Indexer config
-    indexer: IndexerConfig = MISSING
+    indexer: IndexerConfig
 
-    # Handler configs
-    handlers: List[HandlerConfig] = MISSING
+    # Handler configs, mapping arbitrary handler key to a handler config. The key is
+    # only used to enable composition.
+    handlers: Dict[str, HandlerConfig]
 
 
 @dataclass
 class Config:
     # Top-level database directory. Table partitions are organized as:
     #   {db_dir} / {table_name} / {run_id} / {task_id} / {part}.parquet
-    db_dir: Path = MISSING
+    db_dir: str = MISSING
 
     # Logging directory, shared across runs. Individual run logs go in a subdirectory
     # according to run_id.
-    log_dir: Path = MISSING
+    log_dir: str = MISSING
 
     # Unique ID for the current run.
     run_id: str = MISSING
@@ -73,10 +73,10 @@ class Config:
     num_tasks: int = 1
 
     # List of session directories to process
-    paths: PathsConfig = MISSING
+    paths: PathsConfig = PathsConfig()
 
-    # Table definitions
-    tables: List[TableConfig] = MISSING
+    # Mapping of table names to table configs
+    tables: Dict[str, TableConfig] = MISSING
 
     # Crawler kwargs
     crawler: Optional[Dict[str, Any]] = None

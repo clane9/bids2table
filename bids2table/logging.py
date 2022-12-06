@@ -10,26 +10,30 @@ import numpy as np
 import pandas as pd
 
 from bids2table import StrOrPath
-from bids2table.crawler import HandlingFailure
-from bids2table.engine import _format_task_id
+from bids2table.crawler import CrawlCounts, HandlingFailure
 
-__all__ = ["ProcessedLog"]
+__all__ = ["ProcessedLog", "setup_logging", "format_task_id"]
 
 
 class ProcessedLog:
-    PREFIX = "_log"
+    """
+    A log of processed directories. Supports reading, writing, and filtering candidate
+    paths.
+
+    Args:
+        db_dir: path to database directory
+    """
+
+    PREFIX = "_proc"
     FIELDS = {
         "timestamp": np.datetime64,
         "run_id": str,
         "task_id": int,
-        # TODO: paths can get quite long. Also, datasets can move around. Do we want a
-        # more robust way to identify repeat chunks? Maybe an `Indexer`?
-        #   - for now don't worry about it
-        "dir": str,
-        "count": int,
-        "error_count": int,
+        "path": str,
+        "counts": object,
         "error_rate": float,
         "partitions": object,
+        "errors": object,
     }
 
     def __init__(self, db_dir: StrOrPath):
@@ -39,9 +43,8 @@ class ProcessedLog:
     @property
     def df(self) -> pd.DataFrame:
         """
-        Lazy processed log dataframe.
+        Processed log dataframe.
         """
-        # TODO: optionally join with errors?
         if self._df is None:
             self._df = self._load(self.db_dir)
         return self._df
@@ -50,18 +53,18 @@ class ProcessedLog:
         """
         Load the log of processed directories from the database directory ``db_dir``.
         """
-        # TODO: should these go in the db_dir or the log_dir? Or should there even be
-        # two separate dirs?
         log_path = Path(db_dir) / self.PREFIX
         if not log_path.exists():
             return self._empty()
 
+        logging.info("Loading processed log JSONs")
         batches = []
-        for path in sorted(log_path.glob("**/*.log.json")):
+        for path in sorted(log_path.glob("**/*.proc.json")):
             batches.append(pd.read_json(path, lines=True))
         if len(batches) == 0:
             return self._empty()
 
+        logging.info("De-duplicating processed log (keeping last)")
         df = pd.concat(batches, ignore_index=True)
         df = df.astype(self.FIELDS)
         df = df.drop_duplicates(subset="dir", keep="last")
@@ -77,45 +80,32 @@ class ProcessedLog:
         self,
         run_id: str,
         task_id: int,
-        dirpath: StrOrPath,
-        count: int,
-        error_count: int,
-        error_rate: float,
+        path: StrOrPath,
+        counts: CrawlCounts,
         partitions: List[str],
-        errors: Optional[List[HandlingFailure]],
+        errors: List[HandlingFailure],
     ):
         """
         Append a record to the processed log table.
         """
-        dirpath = str(Path(dirpath).absolute())
+        path = str(Path(path).absolute())
         partitions = [str(Path(part).relative_to(self.db_dir)) for part in partitions]
         record = {
             "timestamp": datetime.utcnow().isoformat(),
             "run_id": run_id,
             "task_id": task_id,
-            "dir": dirpath,
-            "count": count,
-            "error_count": error_count,
-            "error_rate": error_rate,
+            "path": path,
+            "counts": counts.to_dict(),
+            "error_rate": counts.error_rate,
             "partitions": partitions,
+            "errors": [err.to_dict() for err in errors],
         }
         log_dir = self.db_dir / self.PREFIX / run_id
         if not log_dir.exists():
             log_dir.mkdir(parents=True)
-        json_path = log_dir / (_format_task_id(task_id) + ".log.json")
+        json_path = log_dir / (format_task_id(task_id) + ".proc.json")
         with open(json_path, "a") as f:
             print(json.dumps(record), file=f)
-
-        if errors:
-            err_record = {
-                "run_id": run_id,
-                "task_id": task_id,
-                "dir": dirpath,
-                "errors": [err.to_dict() for err in errors],
-            }
-            err_json_path = log_dir / (_format_task_id(task_id) + ".err.json")
-            with open(err_json_path, "a") as f:
-                print(json.dumps(err_record), file=f)
 
     def filter_paths(
         self, paths: np.ndarray, error_rate_threshold: Optional[float] = None
@@ -124,7 +114,7 @@ class ProcessedLog:
         Filter a list of paths against those we've already processed successfully.
         """
         # Pick out the processed paths that are also in the current todo list.
-        overlap_mask = np.isin(self.df["dir"], paths)
+        overlap_mask = np.isin(self.df["path"], paths)
         if overlap_mask.sum() == 0:
             return paths
         maybe_redo = self.df.loc[overlap_mask, :]
@@ -140,7 +130,7 @@ class ProcessedLog:
             )
 
         # Filter out paths that were already completed successfully.
-        success_paths = maybe_redo.loc[success_mask, "dir"].values
+        success_paths = maybe_redo.loc[success_mask, "path"].values
         paths = np.setdiff1d(paths, success_paths)
         return paths
 
@@ -162,7 +152,7 @@ def setup_logging(
     """
     Setup root logger.
     """
-    task_id_str = _format_task_id(task_id)
+    task_id_str = format_task_id(task_id)
     FORMAT = (
         f"({task_id_str}) [%(levelname)s %(asctime)s %(filename)s:%(lineno)4d]: "
         "%(message)s"
@@ -193,3 +183,10 @@ def setup_logging(
     # https://stackoverflow.com/a/7430495
     # But I want the convenience to just call e.g. `logging.info()`.
     logging.root = logger  # type: ignore
+
+
+def format_task_id(task_id: int) -> str:
+    """
+    Format a task ID as a zero-padded string.
+    """
+    return f"{task_id:05d}"

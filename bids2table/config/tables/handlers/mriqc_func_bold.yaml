@@ -1,9 +1,10 @@
 defaults:
-  - base_wrap_handler
+  - base_wrap_handler@mriqc_func_bold
 
-pattern: "*-mriqc/**/func/*_bold.json"
-label: mriqc_func_bold
-loader:
-  name: load_json_dict
-  kwargs: {"nested": False}
-example: mriqc_func_bold.json
+mriqc_func_bold:
+  pattern: "*-mriqc/**/func/*_bold.json"
+  label: mriqc_func_bold
+  loader:
+    name: load_json_dict
+    kwargs: {"nested": False}
+  example: mriqc_func_bold.json

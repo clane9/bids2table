@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Dict, Optional
 
 import pyarrow as pa
@@ -19,7 +18,7 @@ __all__ = ["WrapHandlerConfig", "WrapHandler"]
 class WrapHandlerConfig(HandlerConfig):
     name: str = "wrap_handler"
     loader: LoaderConfig = MISSING
-    example: Optional[Path] = None
+    example: Optional[str] = None
     fields: Optional[Dict[str, str]] = None
 
 

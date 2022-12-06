@@ -1,0 +1,12 @@
+defaults:
+  # The syntax is SOURCE@DEST: CONFIG, where SOURCE is the config group relative to
+  # the current config parent, DEST is the destination group in this config, and CONFIG
+  # is the config yaml in the SOURCE group to insert.
+  #
+  # See [here](https://hydra.cc/docs/1.1/advanced/overriding_packages/) for more details.
+  - indexer@mriqc_anat.indexer: bids_anat
+  - handlers@mriqc_anat.handlers:
+    - mriqc_anat_T1w
+
+mriqc_anat:
+  name: anat

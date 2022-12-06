@@ -199,9 +199,6 @@ class Crawler:
             record = handler.handler(path)
             err = None
         except Exception as exc:
-            # TODO: in this case how to we re-run just the files that failed?
-            # In general, robustly being able to update the table is a critical
-            # feature I guess could re-try just the subjects with failures.
             logging.warning(
                 "Handler failed to process a file\n"
                 f"\tdirpath: {indexer.root}\n"
@@ -212,11 +209,6 @@ class Crawler:
                 + "\n"
             )
             record = None
-            # TODO: this might be too much data for each failure. especially the full
-            # handler schema each time. what could be a lighter weight handler
-            # identifier?
-            #   - truncated handler schema
-            #   - handler config instead
             err = HandlingFailure(
                 path, handler.pattern, repr(handler.handler), repr(exc)
             )

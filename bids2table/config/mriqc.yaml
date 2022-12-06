@@ -1,0 +1,5 @@
+defaults:
+  - base
+  - tables:
+    - mriqc_anat
+    - mriqc_func

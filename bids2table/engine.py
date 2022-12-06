@@ -16,7 +16,7 @@ from bids2table.crawler import Crawler
 from bids2table.env import collect_env_info
 from bids2table.handlers import HandlerTuple, get_handler
 from bids2table.indexers import Indexer, get_indexer
-from bids2table.logging import ProcessedLog, setup_logging
+from bids2table.logging import ProcessedLog, format_task_id, setup_logging
 from bids2table.writer import BufferedParquetWriter
 
 IndexersMap = Dict[str, Indexer]
@@ -25,8 +25,12 @@ WritersMap = Dict[str, BufferedParquetWriter]
 
 
 @hydra.main(config_path="config", config_name="base")
-def main(cfg: Config):
-    run_log_dir = cfg.log_dir / cfg.run_id
+def launch(cfg: Config):
+    """
+    Launch a bids2table generation process.
+    """
+
+    run_log_dir = Path(cfg.log_dir) / cfg.run_id
     if not cfg.dry_run:
         run_log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -38,6 +42,10 @@ def main(cfg: Config):
     logging.info("Starting bids2table")
     logging.info("Config:\n%s", OmegaConf.to_yaml(cfg))
     logging.info("Env:\n%s", collect_env_info())
+
+    missing_keys = OmegaConf.missing_keys(cfg)
+    if missing_keys:
+        raise ValueError(f"Missing keys in config: {missing_keys}")
 
     if cfg.dry_run and cfg.task_id != 0:
         logging.info("Dry run only supported in head worker (task_id=0); exiting")
@@ -68,7 +76,7 @@ def main(cfg: Config):
     if not cfg.dry_run:
         workers_dir.mkdir(exist_ok=True)
 
-    worker_json = workers_dir / f"{_format_task_id(cfg.task_id)}.json"
+    worker_json = workers_dir / f"{format_task_id(cfg.task_id)}.json"
     if worker_json.exists():
         logging.info(f"Task ID {cfg.task_id} was run previously; exiting")
         return
@@ -103,29 +111,31 @@ def _generate_tables(
 
         {db_dir} / {table_name} / {run_id} / {task_id} /
     """
-    task_id_str = _format_task_id(cfg.task_id)
+    task_id_str = format_task_id(cfg.task_id)
 
-    crawler = Crawler(indexers_map, handlers_map, **cfg.crawler)
+    crawler = Crawler(indexers_map, handlers_map, **(cfg.crawler or {}))
     processed_log = ProcessedLog(cfg.db_dir)
 
     writers_map: WritersMap = {}
     for name in indexers_map:
         writer_dir = Path(cfg.db_dir) / name / cfg.run_id / task_id_str
-        writers_map[name] = BufferedParquetWriter(prefix=str(writer_dir), **cfg.writer)
+        writers_map[name] = BufferedParquetWriter(
+            prefix=str(writer_dir), **(cfg.writer or {})
+        )
         logging.info(f"Initialized writer at directory:\n\t{writer_dir}")
 
     def _flush():
-        for _, writer in writers_map.items():
-            writer.flush(blocking=True)
+        if not cfg.dry_run:
+            for _, writer in writers_map.items():
+                writer.flush(blocking=True)
 
     try:
         for path in paths:
             logging.info(f"Starting a directory crawl:\n\t{path}")
-            tables, errs, counts = crawler(path)
+            # TODO: should we be failing on first crawler exception?
+            tables, errs, counts = crawler.crawl(path)
             logging.info(
-                f"Finished crawl:\n\tpath: {path}\n"
-                f"\thandle count: {counts.count}\terrors: {counts.error_count}\t"
-                f"error_rate: {counts.error_rate:.3f}"
+                f"Finished crawl:\n\tpath: {path}\n\tcounts: {counts.to_dict()}"
             )
 
             if cfg.dry_run:
@@ -137,26 +147,24 @@ def _generate_tables(
                 partitions.append(partition)
 
             processed_log.write(
-                cfg.run_id,
-                cfg.task_id,
-                path,
-                counts.count,
-                counts.error_count,
-                counts.error_rate,
-                partitions,
+                run_id=cfg.run_id,
+                task_id=cfg.task_id,
+                path=path,
+                counts=counts,
+                partitions=partitions,
                 errors=errs,
             )
 
         # TODO: summary stats? throughput?
 
     except Exception:
-        if cfg.flush_on_error and not cfg.dry_run:
+        if cfg.flush_on_error:
             _flush()
         raise
-
     else:
-        if not cfg.dry_run:
-            _flush()
+        _flush()
+    finally:
+        crawler.close()
 
 
 def _load_paths(cfg: Config) -> np.ndarray:
@@ -168,7 +176,7 @@ def _load_paths(cfg: Config) -> np.ndarray:
     - Optionally filter against the log of processed paths
     """
     paths_cfg = cfg.paths
-    if paths_cfg.list_path is not None:
+    if paths_cfg.list_path:
         logging.info("Loading paths from a file: %s", paths_cfg.list_path)
         list_path = Path(paths_cfg.list_path)
         if list_path.suffix == ".txt":
@@ -180,7 +188,7 @@ def _load_paths(cfg: Config) -> np.ndarray:
                 "Expected the paths list file to be a '*.txt' or '*.npy'; "
                 f"got {list_path.name}"
             )
-    elif paths_cfg.list is not None:
+    elif paths_cfg.list:
         paths = paths_cfg.list
     else:
         raise ValueError("cfg.paths.list_path or cfg.paths.list is required")
@@ -239,7 +247,7 @@ def _initialize_tables(cfg: Config) -> Tuple[IndexersMap, HandlersMap]:
     indexers_map: IndexersMap = {}
     handlers_map: HandlersMap = defaultdict(list)
 
-    for table_cfg in cfg.tables:
+    for table_cfg in cfg.tables.values():
         name = table_cfg.name
         logging.info("Initializing table %s", name)
 
@@ -249,22 +257,15 @@ def _initialize_tables(cfg: Config) -> Tuple[IndexersMap, HandlersMap]:
         indexers_map[name] = indexer
         logging.info(f"Loaded indexer: {indexer}")
 
-        for handler_cfg in table_cfg.handlers:
+        for handler_cfg in table_cfg.handlers.values():
             handler_cls = get_handler(handler_cfg.name)
             handler = handler_cls.from_config(handler_cfg)
             handlers_map[name].append(
                 HandlerTuple(name, handler_cfg.pattern, handler_cfg.label, handler)
             )
             logging.info(
-                f"Loaded handler {handler}\n"
+                f"Loaded handler: {handler}\n"
                 f"\tpattern: {handler_cfg.pattern}\n"
                 f"\tlabel: {handler_cfg.label}"
             )
     return indexers_map, handlers_map
-
-
-def _format_task_id(task_id: int) -> str:
-    """
-    Format a task ID as a zero-padded string.
-    """
-    return f"{task_id:05d}"
