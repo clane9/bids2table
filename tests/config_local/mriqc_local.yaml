@@ -3,9 +3,8 @@ defaults:
   - base
   - tables:
     - mriqc_anat
-    - mriqc_func
+    - mriqc_func_local
 
-# Configs located outside bids2table must include these lines.
 hydra:
   searchpath:
     - pkg://bids2table.config

@@ -119,9 +119,9 @@ _indexer_cases = [
         {"subject": "blah", "session": "01", "task": "abc", "run": 1},
     ),
     (
-        # missing run, no key generated
-        "ds/sub-blah/ses-01/sub-blah_ses-01_task-abc.json",
-        None,
+        # missing ses and run
+        "ds/sub-blah/sub-blah_task-abc.json",
+        {"subject": "blah", "session": None, "task": "abc", "run": None},
     ),
 ]
 

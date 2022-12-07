@@ -95,7 +95,10 @@ class IncrementalTable:
         Convert the table to a pyarrow ``Table``.
         """
         table = pa.Table.from_pylist(
-            [self._table[k] for k in sorted(self._table.keys())],
-            schema=self._combined_schema,
+            list(self._table.values()), schema=self._combined_schema
         )
+        sort_by = self._prepend_prefix(
+            {name: "ascending" for name in self.index_schema.names}, self.INDEX_PREFIX
+        )
+        table = table.sort_by(list(sort_by.items()))
         return table

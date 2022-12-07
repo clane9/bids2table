@@ -46,6 +46,7 @@ class BIDSEntityConfig:
     key: Optional[str] = None
     pattern: Optional[str] = None
     dtype: str = "str"
+    required: bool = False
 
 
 @dataclass
@@ -67,6 +68,7 @@ class BIDSEntity:
             (capturing group to capture the value. Should use a posix path separator (/)
             regardless of platform. (default: ``"[_/]{key}-(.+?)[._/]"``).
         dtype: Type name or type.
+        required: Whether the entity is required.
 
     .. note::
         The implementation closely follows ``pybids.layout.Entity`` from `PyBIDS`_. For
@@ -83,6 +85,7 @@ class BIDSEntity:
         key: Optional[str] = None,
         pattern: Optional[str] = None,
         dtype: Union[str, type] = "str",
+        required: bool = False,
     ):
         if key is None:
             key = name
@@ -98,6 +101,7 @@ class BIDSEntity:
         self.key = key
         self.pattern = pattern
         self.dtype = dtype
+        self.required = required
 
         self._dtype = BIDS_DTYPES[dtype] if isinstance(dtype, str) else dtype
         self._p = re.compile(pattern)
@@ -130,12 +134,14 @@ class BIDSEntity:
             key=cfg.key,
             pattern=cfg.pattern,
             dtype=cfg.dtype,
+            required=cfg.required,
         )
 
     def __str__(self) -> str:
         return (
             f"{self.__class__.__name__}(name='{self.name}', key='{self.key}', "
-            f"pattern={repr(self.pattern)}, dtype={repr(self.dtype)})"
+            f"pattern={repr(self.pattern)}, dtype={repr(self.dtype)}, "
+            f"required={self.required})"
         )
 
 
@@ -162,8 +168,10 @@ class BIDSIndexer(Indexer):
         key = {}
         for col in self.columns:
             val = col.search(path)
-            if val is None:
-                logging.info(f"Missing index field '{col.name}' in {path}; discarding")
+            if col.required and val is None:
+                logging.info(
+                    f"Missing required index field '{col.name}' in {path}; discarding"
+                )
                 return None
             key[col.name] = val
         return key

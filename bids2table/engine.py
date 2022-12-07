@@ -6,7 +6,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-import hydra
 import numpy as np
 from omegaconf import OmegaConf
 
@@ -24,7 +23,6 @@ HandlersMap = Dict[str, List[HandlerTuple]]
 WritersMap = Dict[str, BufferedParquetWriter]
 
 
-@hydra.main(config_path="config", config_name="base")
 def launch(cfg: Config):
     """
     Launch a bids2table generation process.
@@ -85,7 +83,11 @@ def launch(cfg: Config):
     logging.info(f"Writing task ID: {cfg.task_id}\n\thostname: {hostname}\tpid: {pid}")
     if not cfg.dry_run:
         with open(worker_json, "w") as f:
-            json.dump({"task_id": cfg.task_id, "hostname": hostname, "pid": pid}, f)
+            # using print rather than dump to guarantee newline
+            print(
+                json.dumps({"task_id": cfg.task_id, "hostname": hostname, "pid": pid}),
+                file=f,
+            )
 
     logging.info("Partitioning paths")
     paths = _partition_paths(cfg, paths)
@@ -95,12 +97,11 @@ def launch(cfg: Config):
 
     logging.info("Starting main table generation process")
     _generate_tables(cfg, paths, indexers_map, handlers_map)
-    return
 
 
 def _generate_tables(
     cfg: Config,
-    paths: np.ndarray,
+    paths: List[str],
     indexers_map: IndexersMap,
     handlers_map: HandlersMap,
 ):
@@ -223,7 +224,7 @@ def _load_paths(cfg: Config) -> np.ndarray:
     return filtered_paths
 
 
-def _partition_paths(cfg: Config, paths: np.ndarray) -> np.ndarray:
+def _partition_paths(cfg: Config, paths: np.ndarray) -> List[str]:
     """
     Partition the paths according to task worker and return the slice for this
     ``task_id``. Note the slice can be empty if ``cfg.paths.min_per_task`` is large.
@@ -237,7 +238,8 @@ def _partition_paths(cfg: Config, paths: np.ndarray) -> np.ndarray:
     if start >= len(paths):
         return np.array([], dtype=str)
     stop = min(len(paths), start + task_num_paths)
-    return paths[start:stop]
+    sub_paths = paths[start:stop].tolist()
+    return sub_paths
 
 
 def _initialize_tables(cfg: Config) -> Tuple[IndexersMap, HandlersMap]:

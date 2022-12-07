@@ -16,7 +16,7 @@ DATA_DIR = Path(__file__).parent / "data"
 def crawler():
     anat_indexer = bids.BIDSIndexer.from_config(
         bids.BIDSIndexerConfig(
-            columns=[bids.BIDSEntityConfig(name="subject", key="sub")]
+            columns=[bids.BIDSEntityConfig(name="subject", key="sub", required=True)]
         )
     )
     anat_handler = WrapHandler.from_config(
@@ -29,9 +29,9 @@ def crawler():
     func_indexer = bids.BIDSIndexer.from_config(
         bids.BIDSIndexerConfig(
             columns=[
-                bids.BIDSEntityConfig(name="subject", key="sub"),
+                bids.BIDSEntityConfig(name="subject", key="sub", required=True),
                 bids.BIDSEntityConfig(name="task"),
-                bids.BIDSEntityConfig(name="run"),
+                bids.BIDSEntityConfig(name="run", dtype="int"),
             ]
         )
     )
@@ -60,9 +60,9 @@ def sloppy_crawler():
     func_indexer = bids.BIDSIndexer.from_config(
         bids.BIDSIndexerConfig(
             columns=[
-                bids.BIDSEntityConfig(name="subject", key="sub"),
+                bids.BIDSEntityConfig(name="subject", key="sub", required=True),
                 bids.BIDSEntityConfig(name="task"),
-                bids.BIDSEntityConfig(name="run"),
+                bids.BIDSEntityConfig(name="run", dtype="int"),
             ]
         )
     )

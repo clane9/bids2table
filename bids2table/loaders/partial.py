@@ -26,7 +26,7 @@ class PartialLoader:
         """
         Create a ``PartialLoader`` from a config
         """
-        return cls(loader=get_loader(cfg.name), kwargs=cfg.kwargs)
+        return cls(loader=get_loader(cfg.name), kwargs=dict(cfg.kwargs))
 
     def __str__(self) -> str:
         loader_fmt = getattr(self.loader, "__name__", str(self.loader))

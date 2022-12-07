@@ -90,6 +90,10 @@ class ProcessedLog:
         """
         path = str(Path(path).absolute())
         partitions = [str(Path(part).relative_to(self.db_dir)) for part in partitions]
+        # TODO: possible fields to add:
+        #   - start/end/elapsed
+        #   - table shapes
+        #   - list of handlers applied
         record = {
             "timestamp": datetime.utcnow().isoformat(),
             "run_id": run_id,
@@ -157,7 +161,7 @@ def setup_logging(
         f"({task_id_str}) [%(levelname)s %(asctime)s %(filename)s:%(lineno)4d]: "
         "%(message)s"
     )
-    formatter = logging.Formatter(FORMAT, datefmt="%Y-%m-%d %H:%M:%S")
+    formatter = logging.Formatter(FORMAT, datefmt="%y-%m-%d %H:%M:%S")
 
     logger = logging.getLogger()
     logger.setLevel(level)

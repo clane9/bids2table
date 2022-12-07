@@ -1,0 +1,7 @@
+defaults:
+  - indexer@mriqc_func_local.indexer: bids_func
+  - handlers@mriqc_func_local.handlers:
+    - mriqc_func_bold
+
+mriqc_func_local:
+  name: func

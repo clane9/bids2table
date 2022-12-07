@@ -24,7 +24,7 @@ class HandlerConfig:
     fields: Optional[Dict[str, str]] = MISSING
     metadata: Optional[Dict[str, str]] = None
     rename_map: Optional[Dict[str, str]] = None
-    overlap_threshold: float = 0.5
+    overlap_threshold: Optional[float] = 0.5
 
 
 class Handler(ABC):
@@ -53,7 +53,7 @@ class Handler(ABC):
         fields: Dict[str, DataType],
         metadata: Optional[Dict[str, str]] = None,
         rename_map: Optional[Dict[str, str]] = None,
-        overlap_threshold: float = 0.5,
+        overlap_threshold: Optional[float] = 0.5,
     ):
         self.fields = fields
         self.metadata = metadata
@@ -99,7 +99,7 @@ class Handler(ABC):
                 f"\textra fields: {record_diff}\n"
                 f"\thandler: {repr(self)}"
             )
-            if overlap < self.overlap_threshold:
+            if self.overlap_threshold and overlap < self.overlap_threshold:
                 logging.warning(
                     f"Record overlap {overlap:.2f} < {self.overlap_threshold}; "
                     "discarding"

@@ -45,7 +45,7 @@ class Indexer(Handler):
         fields: Dict[str, DataType],
         metadata: Optional[Dict[str, str]] = None,
     ):
-        super().__init__(fields, metadata, overlap_threshold=1.0)
+        super().__init__(fields, metadata, overlap_threshold=None)
         self.root: Optional[Path] = None
 
     @abstractmethod

@@ -4,8 +4,10 @@ defaults:
 columns:
   - name: subject
     key: sub
+    required: true
   - name: session
     key: ses
   - name: task
+    required: true
   - name: run
     dtype: int
