@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Union
 
 from omegaconf import MISSING
 
-from bids2table import RecordDict, StrOrPath
+from bids2table.types import RecordDict, StrOrPath
 
 from .indexer import Indexer, IndexerConfig
 from .registry import register_indexer

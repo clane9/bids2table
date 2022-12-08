@@ -4,9 +4,10 @@ from typing import Dict, Optional
 import pyarrow as pa
 from omegaconf import MISSING
 
-from bids2table import RecordDict, StrOrPath, locate_file
 from bids2table.loaders import Loader, LoaderConfig, PartialLoader
+from bids2table.path import locate_file
 from bids2table.schema import Fields, get_fields
+from bids2table.types import RecordDict, StrOrPath
 
 from .handler import Handler, HandlerConfig
 from .registry import register_handler

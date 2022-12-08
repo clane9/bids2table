@@ -3,8 +3,8 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import pyarrow as pa
 
-from bids2table import RecordDict
 from bids2table.schema import concat_schemas
+from bids2table.types import RecordDict
 
 
 class IncrementalTable:

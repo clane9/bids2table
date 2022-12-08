@@ -5,9 +5,9 @@ from typing import Dict, Optional
 
 from omegaconf import MISSING
 
-from bids2table import RecordDict, StrOrPath
 from bids2table.handlers import Handler
 from bids2table.schema import DataType
+from bids2table.types import RecordDict, StrOrPath
 
 __all__ = ["IndexerConfig", "Indexer"]
 

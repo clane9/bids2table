@@ -9,8 +9,8 @@ from typing import List, Optional, Union
 import numpy as np
 import pandas as pd
 
-from bids2table import StrOrPath
 from bids2table.crawler import CrawlCounts, HandlingFailure
+from bids2table.types import StrOrPath
 
 __all__ = ["ProcessedLog", "setup_logging", "format_task_id"]
 

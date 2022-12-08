@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 from omegaconf import MISSING
 from typing_extensions import Protocol, runtime_checkable
 
-from bids2table import RecordDict, StrOrPath
+from bids2table.types import RecordDict, StrOrPath
 
 __all__ = ["Loader", "LoaderConfig"]
 

@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pyarrow as pa
 
-from bids2table import RecordDict
+from bids2table.types import RecordDict
 
 __all__ = [
     "create_schema",

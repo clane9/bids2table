@@ -6,7 +6,7 @@ from typing import Optional, Union
 import pyarrow as pa
 from pyarrow import parquet as pq
 
-from bids2table import StrOrPath
+from bids2table.types import StrOrPath
 from bids2table.utils import atomicopen, parse_size
 
 

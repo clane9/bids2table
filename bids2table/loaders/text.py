@@ -5,7 +5,7 @@ from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 
-from bids2table import RecordDict, StrOrPath
+from bids2table.types import RecordDict, StrOrPath
 
 from .registry import register_loader
 

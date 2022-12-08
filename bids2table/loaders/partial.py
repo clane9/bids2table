@@ -1,7 +1,7 @@
 import json
 from typing import Any, Dict, Optional
 
-from bids2table import RecordDict, StrOrPath
+from bids2table.types import RecordDict, StrOrPath
 
 from .loader import Loader, LoaderConfig
 from .registry import get_loader

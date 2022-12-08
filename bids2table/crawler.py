@@ -8,10 +8,10 @@ from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple
 
 import pyarrow as pa
 
-from bids2table import RecordDict, StrOrPath
 from bids2table.handlers import HandlerTuple
 from bids2table.indexers import Indexer
 from bids2table.table import IncrementalTable
+from bids2table.types import RecordDict, StrOrPath
 from bids2table.utils import PatternLUT
 
 

@@ -6,8 +6,8 @@ from typing import Dict, NamedTuple, Optional
 
 from omegaconf import MISSING
 
-from bids2table import RecordDict, StrOrPath
 from bids2table.schema import DataType, cast_to_schema, create_schema, format_schema
+from bids2table.types import RecordDict, StrOrPath
 
 __all__ = [
     "HandlerConfig",
