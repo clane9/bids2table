@@ -2,7 +2,7 @@ import json
 import logging
 import sys
 from datetime import datetime
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -12,7 +12,7 @@ import pandas as pd
 from bids2table.crawler import CrawlCounts, HandlingFailure
 from bids2table.types import StrOrPath
 
-__all__ = ["ProcessedLog", "setup_logging", "format_task_id"]
+__all__ = ["ProcessedLog", "setup_logging", "format_worker_id"]
 
 
 class ProcessedLog:
@@ -27,8 +27,8 @@ class ProcessedLog:
     PREFIX = "_proc"
     FIELDS = {
         "timestamp": np.datetime64,
-        "run_id": str,
-        "task_id": int,
+        "collection_id": str,
+        "worker_id": int,
         "path": str,
         "counts": object,
         "error_rate": float,
@@ -67,7 +67,7 @@ class ProcessedLog:
         logging.info("De-duplicating processed log (keeping last)")
         df = pd.concat(batches, ignore_index=True)
         df = df.astype(self.FIELDS)
-        df = df.drop_duplicates(subset="dir", keep="last")
+        df = df.drop_duplicates(subset="path", keep="last")
         return df
 
     @classmethod
@@ -78,8 +78,8 @@ class ProcessedLog:
 
     def write(
         self,
-        run_id: str,
-        task_id: int,
+        collection_id: str,
+        worker_id: int,
         path: StrOrPath,
         counts: CrawlCounts,
         partitions: List[str],
@@ -96,18 +96,18 @@ class ProcessedLog:
         #   - list of handlers applied
         record = {
             "timestamp": datetime.utcnow().isoformat(),
-            "run_id": run_id,
-            "task_id": task_id,
+            "collection_id": collection_id,
+            "worker_id": worker_id,
             "path": path,
             "counts": counts.to_dict(),
             "error_rate": counts.error_rate,
             "partitions": partitions,
             "errors": [err.to_dict() for err in errors],
         }
-        log_dir = self.db_dir / self.PREFIX / run_id
+        log_dir = self.db_dir / self.PREFIX / collection_id
         if not log_dir.exists():
             log_dir.mkdir(parents=True)
-        json_path = log_dir / (format_task_id(task_id) + ".proc.json")
+        json_path = log_dir / (format_worker_id(worker_id) + ".proc.json")
         with open(json_path, "a") as f:
             print(json.dumps(record), file=f)
 
@@ -124,7 +124,9 @@ class ProcessedLog:
         maybe_redo = self.df.loc[overlap_mask, :]
 
         # Find partitions that were successfully written out.
-        exists_mask = maybe_redo["partitions"].apply(_all_exist)
+        exists_mask = maybe_redo["partitions"].apply(
+            partial(_all_exist, root=self.db_dir)
+        )
 
         # And the paths that were processed without too many errors.
         success_mask = exists_mask
@@ -139,26 +141,26 @@ class ProcessedLog:
         return paths
 
 
-def _all_exist(ps: List[str]) -> bool:
-    return all(_exists(p) for p in ps)
+def _all_exist(ps: List[str], root: Optional[StrOrPath] = None) -> bool:
+    return all(_exists(p, root=root) for p in ps)
 
 
 @lru_cache(maxsize=2**14)
-def _exists(p: str) -> bool:
-    return Path(p).exists()
+def _exists(p: str, root: Optional[StrOrPath] = None) -> bool:
+    return (Path(root) / p).exists() if root else Path(p).exists()
 
 
 def setup_logging(
-    task_id: int,
+    worker_id: int,
     log_dir: Optional[StrOrPath] = None,
     level: Union[int, str] = "INFO",
 ):
     """
     Setup root logger.
     """
-    task_id_str = format_task_id(task_id)
+    worker_id_str = format_worker_id(worker_id)
     FORMAT = (
-        f"({task_id_str}) [%(levelname)s %(asctime)s %(filename)s:%(lineno)4d]: "
+        f"({worker_id_str}) [%(levelname)s %(asctime)s %(filename)s:%(lineno)4d]: "
         "%(message)s"
     )
     formatter = logging.Formatter(FORMAT, datefmt="%y-%m-%d %H:%M:%S")
@@ -177,7 +179,7 @@ def setup_logging(
 
     if log_dir is not None:
         log_dir = Path(log_dir)
-        log_path = log_dir / f"log-{task_id_str}.txt"
+        log_path = log_dir / f"log-{worker_id_str}.txt"
         file_handler = logging.FileHandler(log_path, mode="a")
         file_handler.setFormatter(formatter)
         file_handler.setLevel(level)
@@ -189,8 +191,8 @@ def setup_logging(
     logging.root = logger  # type: ignore
 
 
-def format_task_id(task_id: int) -> str:
+def format_worker_id(worker_id: int) -> str:
     """
-    Format a task ID as a zero-padded string.
+    Format a worker ID as a zero-padded string.
     """
-    return f"{task_id:05d}"
+    return f"{worker_id:04d}"

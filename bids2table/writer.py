@@ -7,7 +7,7 @@ import pyarrow as pa
 from pyarrow import parquet as pq
 
 from bids2table.types import StrOrPath
-from bids2table.utils import atomicopen, parse_size
+from bids2table.utils import atomicopen, detect_size_units, parse_size
 
 
 class BufferedParquetWriter:
@@ -52,6 +52,7 @@ class BufferedParquetWriter:
         self._part = 0
         self._part_batch_start = 0
         self._batch_count = 0
+        self._total_bytes = 0
 
     def write(self, batch: pa.Table) -> str:
         """
@@ -87,10 +88,11 @@ class BufferedParquetWriter:
                 self._future.result()
 
             table_bytes = self._table.get_total_buffer_size()
+            table_size, units = detect_size_units(table_bytes)
             logging.info(
                 "Flushing to partition\n"
                 f"\tbatches: [{self._part_batch_start}, {self._batch_count})\n"
-                f"\tMB: {table_bytes / 1e6:.2f}\n"
+                f"\tsize: {table_size:.0f} {units}\n"
                 f"\tpath: {self.path()}"
             )
             self._future = self._pool.submit(
@@ -102,6 +104,7 @@ class BufferedParquetWriter:
             self._table = None
             self._part += 1
             self._part_batch_start = self._batch_count
+            self._total_bytes += table_bytes
 
             if blocking:
                 self._future.result()
@@ -110,6 +113,13 @@ class BufferedParquetWriter:
     def _flush_task(table: pa.Table, path: str, row_group_size: int):
         with atomicopen(path, "wb") as f:
             pq.write_table(table, f, row_group_size=row_group_size)
+
+    def total_bytes(self) -> int:
+        """
+        Total bytes written plus buffer
+        """
+        buf_bytes = 0 if self._table is None else self._table.get_total_buffer_size()
+        return self._total_bytes + buf_bytes
 
     def __enter__(self) -> "BufferedParquetWriter":
         return self

@@ -34,8 +34,8 @@ class PathsConfig:
     # will be re-processed. Set to null to disable.
     redo_error_rate_threshold: float = 0.25
 
-    # Minimum number of paths to assign to each task.
-    min_per_task: Optional[int] = None
+    # Minimum number of paths to assign to each worker.
+    min_per_worker: Optional[int] = None
 
 
 @dataclass
@@ -54,23 +54,23 @@ class TableConfig:
 @dataclass
 class Config:
     # Top-level database directory. Table partitions are organized as:
-    #   {db_dir} / {table_name} / {run_id} / {task_id} / {part}.parquet
+    #   {db_dir} / {table_name} / {collection_id} / {worker_id} / {part}.parquet
     db_dir: str = MISSING
 
     # Logging directory, shared across runs. Individual run logs go in a subdirectory
-    # according to run_id.
+    # according to collection_id.
     log_dir: str = MISSING
 
-    # Unique ID for the current run.
-    run_id: str = MISSING
+    # Unique ID for the current bids2table collection.
+    collection_id: str = MISSING
 
-    # Session directories are assigned to task workers to process based on their ID.
+    # Session directories are assigned to workers to process based on their ID.
     # TODO: It might be worth inferring these from slurm. But then that might be a bit
     # too much hiding stuff from the user.
-    task_id: int = 0
+    worker_id: int = 0
 
-    # Total number of task workers
-    num_tasks: int = 1
+    # Total number of workers
+    num_workers: int = 1
 
     # List of session directories to process
     paths: PathsConfig = PathsConfig()

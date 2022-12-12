@@ -146,6 +146,16 @@ def test_parse_size_error():
         ut.parse_size("10 PB")
 
 
+@pytest.mark.parametrize(
+    ("size", "expected", "expected_units"),
+    [(23, 23.0, "B"), (2300, 2.3, "KB"), (23000000, 23.0, "MB")],
+)
+def test_detect_size_units(size: int, expected: float, expected_units: str):
+    val, units = ut.detect_size_units(size)
+    assert val == expected
+    assert units == expected_units
+
+
 @pytest.fixture
 def dummy_module(tmp_path: Path) -> Path:
     mod_path = tmp_path / "dummy_module.py"

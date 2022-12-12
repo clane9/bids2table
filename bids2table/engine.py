@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import socket
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -11,11 +12,11 @@ from omegaconf import OmegaConf
 
 from bids2table import utils as ut
 from bids2table.config import Config
-from bids2table.crawler import Crawler
+from bids2table.crawler import CrawlCounts, Crawler
 from bids2table.env import collect_env_info
 from bids2table.handlers import HandlerTuple, get_handler
 from bids2table.indexers import Indexer, get_indexer
-from bids2table.logging import ProcessedLog, format_task_id, setup_logging
+from bids2table.logging import ProcessedLog, format_worker_id, setup_logging
 from bids2table.writer import BufferedParquetWriter
 
 IndexersMap = Dict[str, Indexer]
@@ -28,12 +29,12 @@ def launch(cfg: Config):
     Launch a bids2table generation process.
     """
 
-    run_log_dir = Path(cfg.log_dir) / cfg.run_id
+    run_log_dir = Path(cfg.log_dir) / cfg.collection_id
     if not cfg.dry_run:
         run_log_dir.mkdir(parents=True, exist_ok=True)
 
     setup_logging(
-        cfg.task_id,
+        cfg.worker_id,
         log_dir=(None if cfg.dry_run else run_log_dir),
         level=cfg.log_level,
     )
@@ -45,8 +46,8 @@ def launch(cfg: Config):
     if missing_keys:
         raise ValueError(f"Missing keys in config: {missing_keys}")
 
-    if cfg.dry_run and cfg.task_id != 0:
-        logging.info("Dry run only supported in head worker (task_id=0); exiting")
+    if cfg.dry_run and cfg.worker_id != 0:
+        logging.info("Dry run only supported in head worker (worker_id=0); exiting")
         return
 
     if cfg.include_modules:
@@ -57,10 +58,10 @@ def launch(cfg: Config):
     logging.info("Initializing tables")
     indexers_map, handlers_map = _initialize_tables(cfg)
     logging.info("Loading paths")
-    paths = _load_paths(cfg) if cfg.task_id == 0 else None
+    paths = _load_paths(cfg) if cfg.worker_id == 0 else None
 
     paths_path = run_log_dir / "paths_list.txt"
-    if cfg.task_id == 0 and not paths_path.exists():
+    if cfg.worker_id == 0 and not paths_path.exists():
         logging.info(f"Saving expanded paths:\n\t{paths_path}")
         if not cfg.dry_run:
             with ut.atomicopen(paths_path, "w") as f:
@@ -74,18 +75,22 @@ def launch(cfg: Config):
     if not cfg.dry_run:
         workers_dir.mkdir(exist_ok=True)
 
-    worker_json = workers_dir / f"{format_task_id(cfg.task_id)}.json"
+    worker_json = workers_dir / f"{format_worker_id(cfg.worker_id)}.json"
     if worker_json.exists():
-        logging.info(f"Task ID {cfg.task_id} was run previously; exiting")
+        logging.info(f"Worker ID {cfg.worker_id} was run previously; exiting")
         return
     hostname = socket.gethostname()
     pid = os.getpid()
-    logging.info(f"Writing task ID: {cfg.task_id}\n\thostname: {hostname}\tpid: {pid}")
+    logging.info(
+        f"Writing worker ID: {cfg.worker_id}\n\thostname: {hostname}\tpid: {pid}"
+    )
     if not cfg.dry_run:
         with open(worker_json, "w") as f:
             # using print rather than dump to guarantee newline
             print(
-                json.dumps({"task_id": cfg.task_id, "hostname": hostname, "pid": pid}),
+                json.dumps(
+                    {"worker_id": cfg.worker_id, "hostname": hostname, "pid": pid}
+                ),
                 file=f,
             )
 
@@ -110,20 +115,33 @@ def _generate_tables(
 
     Table partitions are written to::
 
-        {db_dir} / {table_name} / {run_id} / {task_id} /
+        {db_dir} / {table_name} / {collection_id} / {worker_id} /
     """
-    task_id_str = format_task_id(cfg.task_id)
+    worker_id_str = format_worker_id(cfg.worker_id)
 
     crawler = Crawler(indexers_map, handlers_map, **(cfg.crawler or {}))
     processed_log = ProcessedLog(cfg.db_dir)
 
     writers_map: WritersMap = {}
     for name in indexers_map:
-        writer_dir = Path(cfg.db_dir) / name / cfg.run_id / task_id_str
+        writer_dir = Path(cfg.db_dir) / name / cfg.collection_id / worker_id_str
         writers_map[name] = BufferedParquetWriter(
             prefix=str(writer_dir), **(cfg.writer or {})
         )
         logging.info(f"Initialized writer at directory:\n\t{writer_dir}")
+
+    tic = time.monotonic()
+    count_totals = CrawlCounts()
+
+    def format_stats(counts: CrawlCounts):
+        rtime = time.monotonic() - tic
+        total_bytes = sum(w.total_bytes() for w in writers_map.values())
+        tput, tput_units = ut.detect_size_units(total_bytes / rtime)
+        return (
+            f"\tcounts: {counts.to_dict()}\n"
+            f"\tcount totals: {count_totals.to_dict()}\n"
+            f"\truntime: {rtime:.2f} s\tthroughput: {tput:.0f} {tput_units}/s"
+        )
 
     def _flush():
         if not cfg.dry_run:
@@ -132,12 +150,14 @@ def _generate_tables(
 
     try:
         for path in paths:
+            if not Path(path).is_dir():
+                continue
+
             logging.info(f"Starting a directory crawl:\n\t{path}")
             # TODO: should we be failing on first crawler exception?
             tables, errs, counts = crawler.crawl(path)
-            logging.info(
-                f"Finished crawl:\n\tpath: {path}\n\tcounts: {counts.to_dict()}"
-            )
+            count_totals.update(counts)
+            logging.info(f"Finished crawl:\n\tpath: {path}\n{format_stats(counts)}")
 
             if cfg.dry_run:
                 break
@@ -148,15 +168,13 @@ def _generate_tables(
                 partitions.append(partition)
 
             processed_log.write(
-                run_id=cfg.run_id,
-                task_id=cfg.task_id,
+                collection_id=cfg.collection_id,
+                worker_id=cfg.worker_id,
                 path=path,
                 counts=counts,
                 partitions=partitions,
                 errors=errs,
             )
-
-        # TODO: summary stats? throughput?
 
     except Exception:
         if cfg.flush_on_error:
@@ -226,18 +244,18 @@ def _load_paths(cfg: Config) -> np.ndarray:
 
 def _partition_paths(cfg: Config, paths: np.ndarray) -> List[str]:
     """
-    Partition the paths according to task worker and return the slice for this
-    ``task_id``. Note the slice can be empty if ``cfg.paths.min_per_task`` is large.
+    Partition the paths according to worker and return the slice for this ``worker_id``.
+    Note the slice can be empty if ``cfg.paths.min_per_worker`` is large.
     """
-    task_id = cfg.task_id
-    num_tasks = cfg.num_tasks
-    task_num_paths = int(np.ceil(len(paths) / num_tasks))
-    if cfg.paths.min_per_task:
-        task_num_paths = max(task_num_paths, cfg.paths.min_per_task)
-    start = task_id * task_num_paths
+    worker_id = cfg.worker_id
+    num_workers = cfg.num_workers
+    worker_num_paths = int(np.ceil(len(paths) / num_workers))
+    if cfg.paths.min_per_worker:
+        worker_num_paths = max(worker_num_paths, cfg.paths.min_per_worker)
+    start = worker_id * worker_num_paths
     if start >= len(paths):
         return np.array([], dtype=str)
-    stop = min(len(paths), start + task_num_paths)
+    stop = min(len(paths), start + worker_num_paths)
     sub_paths = paths[start:stop].tolist()
     return sub_paths
 

@@ -39,6 +39,14 @@ class CrawlCounts:
     def to_dict(self):
         return self.__dict__.copy()
 
+    def update(self, other: "CrawlCounts"):
+        """
+        Increment counts with counts from ``other``.
+        """
+        self.total += other.total
+        self.process += other.process
+        self.error += other.error
+
 
 class Crawler:
     """

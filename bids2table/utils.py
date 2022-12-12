@@ -212,6 +212,24 @@ def parse_size(size: str) -> int:
     return bytesize
 
 
+def detect_size_units(size: Union[int, float]) -> Tuple[float, str]:
+    """
+    Given ``size`` in bytes, find the best size unit and return ``size`` in those units.
+
+    Example:
+        >>> detect_size_units(2000)
+        (2.0, 'KB')
+    """
+    if size < 1e3:
+        return float(size), "B"
+    elif size < 1e6:
+        return size / 1e3, "KB"
+    elif size < 1e9:
+        return size / 1e6, "MB"
+    else:
+        return size / 1e9, "GB"
+
+
 def import_module_from_path(path: Union[str, Path], prepend_sys_path: bool = True):
     """
     Import a module or package from a file or directory path.

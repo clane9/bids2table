@@ -16,7 +16,7 @@ def overrides(tmp_path: Path) -> List[str]:
     return [
         f"db_dir={tmp_path / 'db'}",
         f"log_dir={tmp_path / 'log'}",
-        "run_id=test_run",
+        "collection_id=test_run",
         f"paths.list=[\"{DATA_DIR / 'ds000102-mriqc' / 'sub-*'}\"]",
         "dry_run=true",
     ]
@@ -36,7 +36,7 @@ def wrong_type_overrides(tmp_path: Path) -> List[str]:
     return [
         f"db_dir={tmp_path / 'db'}",
         f"log_dir={tmp_path / 'log'}",
-        "run_id=test_run",
+        "collection_id=test_run",
         f"paths.list=[\"{DATA_DIR / 'ds000102-mriqc' / 'sub-*'}\"]",
         "dry_run=1.0",
     ]
@@ -58,7 +58,7 @@ def test_local_config(overrides: List[str]):
 def test_config_missing(missing_overrides: List[str]):
     cfg = _load_config(missing_overrides)
     missing_keys = OmegaConf.missing_keys(cfg)
-    assert missing_keys == {"run_id"}
+    assert missing_keys == {"collection_id"}
 
 
 def test_config_wrong_type(wrong_type_overrides: List[str]):

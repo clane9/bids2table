@@ -15,7 +15,7 @@ def config(request: FixtureRequest, tmp_path: Path) -> Config:
     overrides = [
         f"db_dir={tmp_path / 'db'}",
         f"log_dir={tmp_path / 'log'}",
-        "run_id=test_run",
+        "collection_id=test_run",
         f"paths.list=[\"{DATA_DIR / 'ds000102-mriqc' / 'sub-*'}\"]",
         f"dry_run={request.param}",
     ]
