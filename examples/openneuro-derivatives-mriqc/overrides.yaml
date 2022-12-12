@@ -1,0 +1,3 @@
+- db_dir: OpenNeuroDerivatives/db
+- log_dir: OpenNeuroDerivatives/bids2table.log
+- paths.list_path: paths_list.txt

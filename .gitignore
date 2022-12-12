@@ -28,3 +28,6 @@ test_results
 
 # Jupyter
 .ipynb_checkpoints
+
+# SLURM
+slurm-*

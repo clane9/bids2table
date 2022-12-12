@@ -1,0 +1,18 @@
+defaults:
+  - base_bids_indexer
+
+columns:
+  # note the added dataset field
+  - name: dataset
+    pattern: "/(ds[0-9]+)"
+    required: true
+  - name: subject
+    key: sub
+    required: true
+  - name: session
+    key: ses
+  # note that some datasets collect multiple T1w runs
+  - name: run
+    dtype: int
+  - name: acquisition
+    key: acq

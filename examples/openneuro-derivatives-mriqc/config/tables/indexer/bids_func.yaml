@@ -1,0 +1,19 @@
+defaults:
+  - base_bids_indexer
+
+columns:
+  # note the added dataset field
+  - name: dataset
+    pattern: "/(ds[0-9]+)"
+    required: true
+  - name: subject
+    key: sub
+    required: true
+  - name: session
+    key: ses
+  - name: task
+    required: true
+  - name: run
+    dtype: int
+  - name: echo
+    dtype: int

@@ -160,6 +160,8 @@ def _generate_tables(
             logging.info(f"Finished crawl:\n\tpath: {path}\n{format_stats(counts)}")
 
             if cfg.dry_run:
+                for name, tab in tables.items():
+                    logging.info("Table: %s\n%s", name, tab)
                 break
 
             partitions = []
