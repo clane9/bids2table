@@ -98,6 +98,8 @@ class Config:
 
     # Logging level
     log_level: str = "INFO"
+    # Log crawler progress after every `log_frequency` directories
+    log_frequency: int = 10
 
 
 config_store = ConfigStore.instance()

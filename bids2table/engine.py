@@ -130,34 +130,59 @@ def _generate_tables(
         )
         logging.info(f"Initialized writer at directory:\n\t{writer_dir}")
 
-    tic = time.monotonic()
-    count_totals = CrawlCounts()
-
-    def format_stats(counts: CrawlCounts):
-        rtime = time.monotonic() - tic
-        total_bytes = sum(w.total_bytes() for w in writers_map.values())
-        tput, tput_units = ut.detect_size_units(total_bytes / rtime)
-        return (
-            f"\tcounts: {counts.to_dict()}\n"
-            f"\tcount totals: {count_totals.to_dict()}\n"
-            f"\truntime: {rtime:.2f} s\tthroughput: {tput:.0f} {tput_units}/s"
-        )
-
     def _flush():
         if not cfg.dry_run:
             for _, writer in writers_map.items():
                 writer.flush(blocking=True)
 
+    tic = time.monotonic()
+    dir_counts = CrawlCounts()
+    count_totals = CrawlCounts()
+
+    def progress_stats():
+        rtime = time.monotonic() - tic
+        total_bytes = sum(w.total_bytes() for w in writers_map.values())
+        tput, tput_units = ut.detect_size_units(total_bytes / rtime)
+        return rtime, tput, tput_units
+
+    def format_progress(path: str, counts: CrawlCounts):
+        rtime = time.monotonic() - tic
+        total_bytes = sum(w.total_bytes() for w in writers_map.values())
+        tput, tput_units = ut.detect_size_units(total_bytes / rtime)
+        return (
+            f"Crawler progress:\n"
+            f"\tlast dir: {path}\n"
+            f"\tlast dir file counts: {counts.to_dict()}\n"
+            f"\tdir counts: {dir_counts.to_dict()}\n"
+            f"\ttotal file counts: {count_totals.to_dict()}\n"
+            f"\truntime: {rtime:.2f} s\tthroughput: {tput:.0f} {tput_units}/s"
+        )
+
     try:
         for path in paths:
+            dir_counts.total += 1
             if not Path(path).is_dir():
+                logging.warning(f"Skipping path {path}; not a directory")
                 continue
 
-            logging.info(f"Starting a directory crawl:\n\t{path}")
             # TODO: should we be failing on first crawler exception?
             tables, errs, counts = crawler.crawl(path)
             count_totals.update(counts)
-            logging.info(f"Finished crawl:\n\tpath: {path}\n{format_stats(counts)}")
+            dir_counts.process += 1
+
+            if (
+                logging.INFO >= logging.root.level
+                and dir_counts.process % cfg.log_frequency == 0
+            ):
+                rtime, tput, tput_units = progress_stats()
+                logging.info(
+                    f"Crawler progress:\n"
+                    f"\tlast dir: {path}\n"
+                    f"\tlast dir file counts: {counts.to_dict()}\n"
+                    f"\tdir counts: {dir_counts.to_dict()}\n"
+                    f"\ttotal file counts: {count_totals.to_dict()}\n"
+                    f"\truntime: {rtime:.2f} s\tthroughput: {tput:.0f} {tput_units}/s"
+                )
 
             if cfg.dry_run:
                 for name, tab in tables.items():
@@ -186,6 +211,13 @@ def _generate_tables(
         _flush()
     finally:
         crawler.close()
+        rtime, tput, tput_units = progress_stats()
+        logging.info(
+            f"Crawler done:\n"
+            f"\tdir counts: {dir_counts.to_dict()}\n"
+            f"\ttotal file counts: {count_totals.to_dict()}\n"
+            f"\truntime: {rtime:.2f} s\tthroughput: {tput:.0f} {tput_units}/s"
+        )
 
 
 def _load_paths(cfg: Config) -> np.ndarray:
