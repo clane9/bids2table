@@ -1,5 +1,4 @@
 # Hydra defaults list specifying how to compose the final config.
-# The composition order is:
 defaults:
   # A special reference to this config file
   - _self_

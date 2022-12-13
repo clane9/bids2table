@@ -57,13 +57,15 @@ Our overrides are in [overrides.yaml](overrides.yaml)
 - paths.list_path: paths_list.txt
 ```
 
+> These overrides are not really necessary, they could just as well go in the config. But this way we demonstrate more of the usage.
+
 ## Running bids2table
 
 First we run `bids2table` with the `-p` option to check the composed config.
 
-Note we also include a command-line override `collection_id=2022-12-12-1700`. Command line overrides work the same as YAML overrides. The `collection_id` is a mandatory identifier that is unique for each bids2table collection run.
+Note we also include a command-line override `collection_id=2022-12-12-1700`. Command line overrides work the same as YAML overrides. The `collection_id` is a mandatory unique identifier for each bids2table collection run.
 
-A reasonable convention for the `collection_id` is to use the output of `date '+%Y-%m-%d-%H%M'`.
+A reasonable convention for the `collection_id` is to use the output of `date '+%Y-%m-%d-%H%M'`. But any unique ID is fine.
 
 ```sh
 python -m bids2table -p -c config/openneuro_mriqc.yaml -y overrides.yaml \
@@ -81,20 +83,82 @@ python -m bids2table -c config/openneuro_mriqc.yaml -y overrides.yaml \
 It seems the dry run succeeded
 
 ```
-(0000) [INFO 22-12-12 17:32:58 engine.py: 160]: Finished crawl:
-    path: /ocean/projects/med220004p/clane2/code/bids2table/examples/openneuro-derivatives-mriqc/OpenNeuroDerivatives/ds000001-mriqc/sub-01
-    counts: {'total': 4, 'process': 4, 'error': 0}
-    count totals: {'total': 4, 'process': 4, 'error': 0}
-    runtime: 0.04 s throughput: 0 B/s
+(0000) [INFO 22-12-12 17:32:58 engine.py: 160]: Crawler done:
+        dir counts: {'total': 1, 'process': 1, 'error': 0}
+        total file counts: {'total': 4, 'process': 4, 'error': 0}
+        runtime: 0.05 s throughput: 0 B/s
 ```
 
 Now to run the full generation process, we use [SLURM](https://slurm.schedmd.com/) to run multiple workers in parallel. Specifically, we use a SLURM [job array](https://slurm.schedmd.com/job_array.html) and pass the `SLURM_ARRAY_TASK_ID` as an override for the `worker_id`. Internally, `bids2table` handles how to assign work to each worker.
 
+Here are the contents of our [sbatch](https://slurm.schedmd.com/sbatch.html) script [batch_array.sh](batch_array.sh)
+
 ```sh
+#SBATCH --job-name=bids2table
+#SBATCH --partition=RM-shared
+#SBATCH --ntasks=2
+#SBATCH --mem=4000
+#SBATCH --time=00:05:00
+#SBATCH --array=0-19
+
 python -m bids2table -c config/openneuro_mriqc.yaml -y overrides.yaml \
-    collection_id=2022-12-12-1730 \
+    collection_id=2022-12-13-1000 \
     worker_id=$SLURM_ARRAY_TASK_ID \
     num_workers=20
 ```
 
-The whole process should run in about a minute.
+## Inspecting outputs
+
+### Logs
+
+The whole process should run in less than a minute. All the logging for this collection run should be found in `OpenNeuroDerivatives/bids2table.log/2022-12-13-1000`.
+
+We can check the last few lines of the log for worker 0 by running
+
+```sh
+tail -n 4 OpenNeuroDerivatives/bids2table.log/2022-12-13-1000/log-0000.txt
+```
+
+Here's the output
+
+```
+(0000) [INFO 22-12-13 10:06:30 engine.py: 215]: Crawler done:
+        dir counts: {'total': 266, 'process': 266, 'error': 0}
+        total file counts: {'total': 1982, 'process': 1982, 'error': 0}
+        runtime: 18.93 s        throughput: 62 KB/s
+```
+
+We can quickly check if there were any warnings by running
+
+```sh
+cat OpenNeuroDerivatives/bids2table.log/2022-12-13-1000/log-*.txt \
+  | grep WARN | wc -l
+```
+
+For this collection we didn't get any warnings. But some warnings you might encounter are:
+
+- Handler failures, due to e.g. a `FileNotFoundError`
+
+  > `FileNotFoundError`s are especially likely when working with datalad datasets, since data objects are not fetched by default.
+
+- Table overwrite warnings, due to multiple files of the same type colliding to the same index.
+
+  > You can get bids2table to distinguish the files by adding more fields to your index. See for example our [bids_anat.yaml](config/tables/indexer/bids_anat.yaml) indexer config.
+
+
+### Tables
+
+Once you're satisfied looking at the logs, loading the parquet tables is easy.
+
+```python
+import pandas as pd
+
+anat = pd.read_parquet("OpenNeuroDerivatives/db/anat")
+func = pd.read_parquet("OpenNeuroDerivatives/db/func")
+```
+
+The results are typical pandas dataframes. You can now filter, slice, transform, and visualize the data any way you like.
+
+For example, here is a matrix of all the functional image quality metrics (IQMs) across subjects and datasets (inspired by [this paper](https://www.biorxiv.org/content/10.1101/111294v3)). Each row is a different metric, each column is a subject. Horizontal and vertical lines divide the metrics and datasets. Note the strong block structure, indicating the presence of dataset "batch effects".
+
+![MRIQC functional IQMs](figures/openneuro_mriqc_func_bold_iqms.png)
