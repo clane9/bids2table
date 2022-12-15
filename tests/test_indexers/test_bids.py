@@ -53,10 +53,7 @@ def _generate_entity_cases() -> Iterator[
         yield cfg, example, expected
 
     # special suffix cases
-    cfg = bids.BIDSEntityConfig(
-        name="suffix",
-        pattern=bids.BIDS_PATTERNS.suffix,
-    )
+    cfg = bids.BIDSEntityConfig(name="suffix")
     cases = [
         # basic
         ("abc_bold.nii", "bold"),
@@ -69,10 +66,7 @@ def _generate_entity_cases() -> Iterator[
         yield cfg, example, expected
 
     # special extension cases
-    cfg = bids.BIDSEntityConfig(
-        name="extension",
-        pattern=bids.BIDS_PATTERNS.extension,
-    )
+    cfg = bids.BIDSEntityConfig(name="extension")
     cases = [
         # basic
         ("abc_bold.nii", ".nii"),

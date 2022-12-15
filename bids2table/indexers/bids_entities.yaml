@@ -1,0 +1,22 @@
+# Default BIDS entitity configs, mapping names to override values.
+# Note that the defaults are:
+#
+#   key: {name}
+#   pattern: "(?:[_/]|^){key}-(.+?)(?:[._/]|$)"
+#   dtype: str
+subject:
+  key: sub
+session:
+  key: ses
+acquisition:
+  key: acq
+run:
+  dtype: int
+echo:
+  dtype: int
+suffix:
+  # abc_bold.nii.gz -> bold
+  pattern: "_([a-zA-Z0-9]*?)\\.[^/]+$"
+extension:
+  # abc_bold.nii.gz -> .nii.gz
+  pattern: ".*?(\\.[^/]+)$"

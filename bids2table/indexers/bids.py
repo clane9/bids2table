@@ -4,8 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+import yaml
 from omegaconf import MISSING
 
+from bids2table.path import locate_file
 from bids2table.types import RecordDict, StrOrPath
 
 from .indexer import Indexer, IndexerConfig
@@ -26,18 +28,9 @@ BIDS_DTYPES: Dict[str, type] = {
     "float": float,
 }
 
-
-# TODO: generalize this to defaults per known name
-class BIDS_PATTERNS:
-    """
-    Regex patterns for a few BIDS entitites
-
-        - suffix: ``"abc_bold.nii.gz"`` -> ``"bold"``
-        - extension: ``"abc_bold.nii.gz"`` -> ``".nii.gz"``
-    """
-
-    suffix = r"_([a-zA-Z0-9]*?)\.[^/]+$"
-    extension = r".*?(\.[^/]+)$"
+with locate_file("bids_entities.yaml", __package__) as path:
+    with open(path) as f:
+        _BIDS_ENTITY_DEFAULTS = yaml.safe_load(f)
 
 
 @dataclass
@@ -45,7 +38,7 @@ class BIDSEntityConfig:
     name: str = MISSING
     key: Optional[str] = None
     pattern: Optional[str] = None
-    dtype: str = "str"
+    dtype: Optional[Union[str, type]] = None
     required: bool = False
 
 
@@ -67,7 +60,7 @@ class BIDSEntity:
         pattern: Regex pattern for extracting the value. There should be a single
             (capturing group to capture the value. Should use a posix path separator (/)
             regardless of platform. (default: ``"[_/]{key}-(.+?)[._/]"``).
-        dtype: Type name or type.
+        dtype: Type name or type (default: str).
         required: Whether the entity is required.
 
     .. note::
@@ -79,18 +72,23 @@ class BIDSEntity:
     .. _PyBIDS: https://bids-standard.github.io/pybids/index.html
     """
 
+    DEFAULTS = _BIDS_ENTITY_DEFAULTS
+
     def __init__(
         self,
         name: str,
         key: Optional[str] = None,
         pattern: Optional[str] = None,
-        dtype: Union[str, type] = "str",
+        dtype: Optional[Union[str, type]] = None,
         required: bool = False,
     ):
+        defaults = self.DEFAULTS.get(name, {})
         if key is None:
-            key = name
+            key = defaults.get("key", name)
         if pattern is None:
-            pattern = f"(?:[_/]|^){key}-(.+?)(?:[._/]|$)"
+            pattern = defaults.get("pattern", f"(?:[_/]|^){key}-(.+?)(?:[._/]|$)")
+        if dtype is None:
+            dtype = defaults.get("dtype", "str")
         if not (dtype in BIDS_DTYPES or dtype in BIDS_DTYPES.values()):
             raise ValueError(
                 f"Unexpected dtype {dtype}; expected one of "

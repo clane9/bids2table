@@ -4,7 +4,5 @@ defaults:
 # TODO: what about dataset?
 columns:
   - name: subject
-    key: sub
     required: true
   - name: session
-    key: ses
