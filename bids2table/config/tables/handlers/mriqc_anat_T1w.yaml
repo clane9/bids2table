@@ -3,7 +3,8 @@ defaults:
 
 mriqc_anat_T1w:
   # TODO: would this pattern really work in general?
-  pattern: "*-mriqc/**/anat/*_T1w.json"
+  pattern:
+    - "*-mriqc/**/anat/*_T1w.json"
   label: mriqc_anat_T1w
   loader:
     name: load_json_dict

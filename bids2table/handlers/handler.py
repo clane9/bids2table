@@ -2,7 +2,7 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, NamedTuple, Optional
+from typing import Dict, List, NamedTuple, Optional
 
 from omegaconf import MISSING
 
@@ -19,7 +19,7 @@ __all__ = [
 @dataclass
 class HandlerConfig:
     name: str = MISSING
-    pattern: str = MISSING
+    pattern: List[str] = MISSING
     label: str = MISSING
     fields: Optional[Dict[str, str]] = MISSING
     metadata: Optional[Dict[str, str]] = None
@@ -160,6 +160,6 @@ class Handler(ABC):
 
 class HandlerTuple(NamedTuple):
     group: Optional[str]
-    pattern: str
+    pattern: List[str]
     label: str
     handler: Handler

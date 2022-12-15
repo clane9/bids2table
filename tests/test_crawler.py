@@ -22,7 +22,7 @@ def crawler():
     anat_handler = WrapHandler.from_config(
         WrapHandlerConfig(
             loader=LoaderConfig(name="load_json_dict", kwargs={"nested": False}),
-            example=Path("mriqc_anat_T1w.json"),
+            example="mriqc_anat_T1w.json",
         )
     )
 
@@ -44,8 +44,10 @@ def crawler():
 
     indexers_map = {"anat": anat_indexer, "func": func_indexer}
     handlers_map = {
-        "anat": [HandlerTuple("anat", "*_T1w.json", "mriqc_anat_T1w", anat_handler)],
-        "func": [HandlerTuple("func", "*_bold.json", "mriqc_func_bold", func_handler)],
+        "anat": [HandlerTuple("anat", ["*_T1w.json"], "mriqc_anat_T1w", anat_handler)],
+        "func": [
+            HandlerTuple("func", ["*_bold.json"], "mriqc_func_bold", func_handler)
+        ],
     }
     crawler = Crawler(indexers_map=indexers_map, handlers_map=handlers_map)
     yield crawler
@@ -69,13 +71,13 @@ def sloppy_crawler():
     func_handler = WrapHandler.from_config(
         WrapHandlerConfig(
             loader=LoaderConfig(name="load_json_dict", kwargs={"nested": False}),
-            example=Path("mriqc_func_bold.json"),
+            example="mriqc_func_bold.json",
         )
     )
 
     indexers_map = {"func": func_indexer}
     handlers_map = {
-        "func": [HandlerTuple("func", "*.json", "mriqc_func_bold", func_handler)],
+        "func": [HandlerTuple("func", ["*.json"], "mriqc_func_bold", func_handler)],
     }
     sloppy_crawler = Crawler(indexers_map=indexers_map, handlers_map=handlers_map)
     yield sloppy_crawler

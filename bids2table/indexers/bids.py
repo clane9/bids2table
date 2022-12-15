@@ -38,7 +38,8 @@ class BIDSEntityConfig:
     name: str = MISSING
     key: Optional[str] = None
     pattern: Optional[str] = None
-    dtype: Optional[Union[str, type]] = None
+    # Restricting to str for dtype to avoid a complaint from omegaconf
+    dtype: Optional[str] = None
     required: bool = False
 
 

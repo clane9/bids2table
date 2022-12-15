@@ -47,7 +47,7 @@ class PatternLUT(Generic[T]):
         self.items = items
 
         # Organize items by suffix for faster lookup.
-        self._items_by_suffix: Dict[str, List[Tuple[str, T]]] = defaultdict(list)
+        self._items_by_suffix: Dict[str, List[Tuple[str, bool, T]]] = defaultdict(list)
         for pattern, val in items:
             if pattern[-1] in "]*?":
                 logging.warning(
@@ -57,19 +57,16 @@ class PatternLUT(Generic[T]):
                 suffix = ""
             else:
                 suffix = Path(pattern).suffix
-            self._items_by_suffix[suffix].append((pattern, val))
+            match_whole = "/" in pattern
+            self._items_by_suffix[suffix].append((pattern, match_whole, val))
 
     def lookup(self, path: Union[str, Path]) -> Iterator[Tuple[str, T]]:
         """
         Lookup one or more items for a path by glob pattern matching.
         """
         path = Path(path)
-        for pattern, val in self._items_by_suffix[path.suffix]:
-            # TODO: could consider generalizing this pattern matching to:
-            #   - tuples of globs
-            #   - arbitrary regex
-            # But better to keep things simple for now.
-            query = path.as_posix() if "/" in pattern else path.name
+        for pattern, match_whole, val in self._items_by_suffix[path.suffix]:
+            query = path.as_posix() if match_whole else path.name
             if fnmatch(query, pattern):
                 yield pattern, val
 

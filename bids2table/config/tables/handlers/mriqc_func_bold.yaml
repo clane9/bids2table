@@ -2,7 +2,8 @@ defaults:
   - base_wrap_handler@mriqc_func_bold
 
 mriqc_func_bold:
-  pattern: "*-mriqc/**/func/*_bold.json"
+  pattern:
+    - "*-mriqc/**/func/*_bold.json"
   label: mriqc_func_bold
   loader:
     name: load_json_dict

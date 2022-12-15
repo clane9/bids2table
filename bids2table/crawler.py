@@ -18,7 +18,7 @@ from bids2table.utils import PatternLUT
 @dataclass
 class HandlingFailure:
     path: str
-    pattern: str
+    pattern: List[str]
     handler: str
     exception: str
 
@@ -78,7 +78,12 @@ class Crawler:
         self.max_failures = max_failures
 
         self._handler_lut = PatternLUT(
-            [(h.pattern, h) for handlers in handlers_map.values() for h in handlers]
+            [
+                (p, h)
+                for handlers in handlers_map.values()
+                for h in handlers
+                for p in h.pattern
+            ]
         )
         self._pool = ThreadPool(self.max_threads)
 

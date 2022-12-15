@@ -1,6 +1,5 @@
 import logging
 from importlib import resources
-from pathlib import Path
 
 import pytest
 
@@ -14,7 +13,7 @@ from bids2table.loaders import LoaderConfig
 def test_wrap_handler(example: str):
     cfg = WrapHandlerConfig(
         loader=LoaderConfig(name="load_json_dict", kwargs={"nested": False}),
-        example=Path(example),
+        example=example,
         # overwrite a datatype, add an extra field
         fields={"EFC": "float32", "_dummy": "str"},
         # set metadata for the extra field
