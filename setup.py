@@ -1,6 +1,6 @@
 import pathlib
 
-from setuptools import find_packages, setup
+from setuptools import find_namespace_packages, find_packages, setup
 
 HERE = pathlib.Path(__file__).parent
 README = (HERE / "README.md").read_text()
@@ -14,8 +14,9 @@ def get_version():
     return version
 
 
-packages = find_packages(exclude=("tests",))
-
+packages = find_packages(include=["bids2table*", "tests*"]) + find_namespace_packages(
+    include=["hydra_plugins.*"]
+)
 
 setup(
     name="bids2table",

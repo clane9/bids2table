@@ -1,0 +1,5 @@
+recursive-include bids2table* *.yaml py.typed
+graft bids2table/config/examples
+recursive-include hydra_plugins/* *.yaml py.typed
+global-exclude *.py[cod]
+global-exclude __pycache__
