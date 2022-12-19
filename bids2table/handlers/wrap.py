@@ -44,7 +44,7 @@ class WrapHandler(Handler):
         if example is not None:
             with locate_file(example, pkg=self.EXAMPLES_PKG) as path:
                 if path is None:
-                    raise FileNotFoundError(f"Example {path} not found")
+                    raise FileNotFoundError(f"Example {example} not found")
                 record = loader(path)
             record = self.apply_renaming(rename_map, record)
             if not record:

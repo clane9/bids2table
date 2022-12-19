@@ -45,7 +45,7 @@ def wrong_type_overrides(tmp_path: Path) -> List[str]:
 def test_config(overrides: List[str]):
     cfg = _load_config(overrides)
     table_cfg = cfg.tables["mriqc_anat"]
-    assert table_cfg.name == "anat"
+    assert table_cfg.name == "mriqc_anat"
     handler_cfg = table_cfg.handlers["mriqc_anat_T1w"]
     assert handler_cfg.name == "wrap_handler"
 

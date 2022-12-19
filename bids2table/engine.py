@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import socket
@@ -86,13 +85,8 @@ def launch(cfg: Config):
     )
     if not cfg.dry_run:
         with open(worker_json, "w") as f:
-            # using print rather than dump to guarantee newline
-            print(
-                json.dumps(
-                    {"worker_id": cfg.worker_id, "hostname": hostname, "pid": pid}
-                ),
-                file=f,
-            )
+            worker_dict = {"id": cfg.worker_id, "hostname": hostname, "pid": pid}
+            print(worker_dict, file=f)
 
     logging.info("Partitioning paths")
     paths = _partition_paths(cfg, paths)
@@ -144,19 +138,6 @@ def _generate_tables(
         total_bytes = sum(w.total_bytes() for w in writers_map.values())
         tput, tput_units = ut.detect_size_units(total_bytes / rtime)
         return rtime, tput, tput_units
-
-    def format_progress(path: str, counts: CrawlCounts):
-        rtime = time.monotonic() - tic
-        total_bytes = sum(w.total_bytes() for w in writers_map.values())
-        tput, tput_units = ut.detect_size_units(total_bytes / rtime)
-        return (
-            f"Crawler progress:\n"
-            f"\tlast dir: {path}\n"
-            f"\tlast dir file counts: {counts.to_dict()}\n"
-            f"\tdir counts: {dir_counts.to_dict()}\n"
-            f"\ttotal file counts: {count_totals.to_dict()}\n"
-            f"\truntime: {rtime:.2f} s\tthroughput: {tput:.0f} {tput_units}/s"
-        )
 
     try:
         for path in paths:
