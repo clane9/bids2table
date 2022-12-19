@@ -9,4 +9,4 @@ defaults:
     - mriqc_anat_T1w
 
 mriqc_anat:
-  name: anat
+  name: mriqc_anat

@@ -1,16 +1,5 @@
-# Hydra defaults list specifying how to compose the final config.
+# Our top-level config is the same as the built-in mriqc config.
+# But we need a local config in order to make sure our local indexers are
+# composed in correctly.
 defaults:
-  # A special reference to this config file
-  - _self_
-  # The base bids2table config defined in `bids2table.config.base`
-  - base
-  # Group configs for the `tables` group
-  - tables:
-    - mriqc_anat
-    - mriqc_func
-
-# Make sure Hydra can find the built-in configs.
-# Configs located outside bids2table must include these lines.
-hydra:
-  searchpath:
-    - pkg://bids2table.config
+  - mriqc

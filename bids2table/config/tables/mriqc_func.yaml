@@ -4,4 +4,4 @@ defaults:
     - mriqc_func_bold
 
 mriqc_func:
-  name: func
+  name: mriqc_func
