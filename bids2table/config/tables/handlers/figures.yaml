@@ -1,0 +1,13 @@
+defaults:
+  - base_wrap_handler@figures
+
+figures:
+  pattern:
+    - "**/figures/*.svg"
+    - "**/figures/*.png"
+    - "**/figures/*.jpg"
+  label: figure
+  loader:
+    name: load_path
+  fields:
+    path: string

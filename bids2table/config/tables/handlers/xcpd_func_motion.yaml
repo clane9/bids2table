@@ -1,0 +1,10 @@
+defaults:
+  - base_wrap_handler@xcpd_func_motion
+
+xcpd_func_motion:
+  pattern:
+    - "**/func/*_motion.tsv"
+  label: xcpd_func_motion
+  loader:
+    name: load_dataframe_tsv
+  example: xcpd_func_motion.tsv

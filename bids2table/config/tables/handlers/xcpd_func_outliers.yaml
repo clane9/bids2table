@@ -1,0 +1,10 @@
+defaults:
+  - base_wrap_handler@xcpd_func_outliers
+
+xcpd_func_outliers:
+  pattern:
+    - "**/func/*_outliers.tsv"
+  label: xcpd_func_outliers
+  loader:
+    name: load_dataframe_tsv
+  example: xcpd_func_outliers.tsv

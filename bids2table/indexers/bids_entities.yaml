@@ -20,3 +20,5 @@ suffix:
 extension:
   # abc_bold.nii.gz -> .nii.gz
   pattern: ".*?(\\.[^/]+)$"
+description:
+  key: desc

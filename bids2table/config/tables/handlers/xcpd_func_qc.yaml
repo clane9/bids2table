@@ -1,0 +1,11 @@
+defaults:
+  - base_wrap_handler@xcpd_func_qc
+
+xcpd_func_qc:
+  pattern:
+    - "**/func/*_qc.csv"
+  label: xcpd_func_qc
+  loader:
+    name: load_single_row_tsv
+    kwargs: {"sep": ","}
+  example: xcpd_func_qc.csv

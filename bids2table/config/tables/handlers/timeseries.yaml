@@ -1,0 +1,10 @@
+defaults:
+  - base_wrap_handler@timeseries
+
+timeseries:
+  pattern:
+    - "*_timeseries.tsv"
+  label: timeseries
+  loader:
+    name: load_array_tsv
+  example: array.tsv

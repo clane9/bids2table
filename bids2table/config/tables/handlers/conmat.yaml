@@ -1,0 +1,13 @@
+defaults:
+  - base_wrap_handler@conmat
+
+conmat:
+  pattern:
+    - "*_conmat.tsv"
+  label: conmat
+  loader:
+    name: load_array_tsv
+    kwargs:
+      triangular: true
+      tri_k: 1
+  example: array.tsv
