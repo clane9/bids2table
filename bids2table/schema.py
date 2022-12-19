@@ -91,10 +91,20 @@ def _struct_from_string(alias: str) -> Optional[pa.DataType]:
     if match is None:
         return None
     fields = []
-    items = match.group(1).split(",")
+    items = match.group(1)
+    # Can't parse nested structs so easily, so just fail on these for now.
+    # The issue is splitting on "," will also split the nested struct.
+    if "struct" in items:
+        raise ValueError(f"Invalid struct alias {alias}; nested structs not supported")
+    items = items.split(",")
     try:
         for item in items:
-            name, alias = item.split(":")
+            # Split just on the first ":" in case you have a field like
+            # "data: list<item: double>"
+            split = item.find(":")
+            if split < 0:
+                raise ValueError
+            name, alias = item[:split], item[split + 1 :]
             fields.append((name.strip(), get_dtype(alias)))
     except ValueError:
         raise ValueError(f"Invalid struct alias {alias}")

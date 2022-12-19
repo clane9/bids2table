@@ -73,14 +73,57 @@ def load_single_row_tsv(
 
 @register_loader
 def load_array_tsv(
-    path: StrOrPath, *, sep: str = "\t", name: str = "array"
+    path: StrOrPath,
+    *,
+    sep: str = "\t",
+    dtype: str = "float",
+    triangular: bool = False,
+    tri_k: int = 0,
 ) -> Optional[Dict[str, np.ndarray]]:
     """
-    Load an array (vector or matrix) represented as a tsv file. Returns a ``dict`` with
-    a single key ``name`` whose value is the numpy array.
+    Load an array (vector or matrix) represented as a tsv file.
+
+    If ``triangular``, the array is assumed to be a matrix. The upper triangular
+    portion of the matrix is extracted and flattened, starting from the
+    ``tri_k`` diagonal.
+
+    Returns a ``dict`` with a single key ``"array"`` mapping to a nested
+    ``dict`` with the following fields:
+
+        shape: original array shape
+        data: flattened numpy array
+        triangular: ``bool`` indicating whether just the upper triangular
+            portion is stored
+        tri_k: triangular diagonal offset
     """
-    arr = np.loadtxt(path, delimiter=sep)
-    record = {name: arr} if arr.size > 0 else None
+    arr: np.ndarray = np.loadtxt(path, delimiter=sep, dtype=dtype)
+    shape = arr.shape
+    if triangular:
+        assert arr.ndim == 2, "a matrix is expected when ``triangular`` is ``True``"
+        n, m = shape
+        arr = arr[np.triu_indices(n=n, k=tri_k, m=m)]
+    else:
+        arr = arr.flatten()
+    record = {
+        "array": {"shape": shape, "data": arr, "triangular": triangular, "tri_k": tri_k}
+    }
+    return record
+
+
+@register_loader
+def load_dataframe_tsv(
+    path: StrOrPath,
+    *,
+    sep: str = "\t",
+    **kwargs,
+) -> Optional[RecordDict]:
+    """
+    Load a tsv dataframe as a single record where each key maps to a
+    one-dimensional numpy array.
+    """
+    df: pd.DataFrame = pd.read_csv(path, sep=sep, **kwargs)
+    record = df.to_dict(orient="series")
+    record = {k: v.values for k, v in record.items()}
     return record
 
 

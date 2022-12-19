@@ -6,7 +6,7 @@ from typing import Dict, List, NamedTuple, Optional
 
 from omegaconf import MISSING
 
-from bids2table.schema import DataType, cast_to_schema, create_schema, format_schema
+from bids2table.schema import DataType, create_schema, format_schema
 from bids2table.types import RecordDict, StrOrPath
 
 __all__ = [
@@ -106,12 +106,7 @@ class Handler(ABC):
                 )
                 return None
 
-        record = cast_to_schema(
-            record,
-            schema=self.schema,
-            safe=True,
-            with_null=self.CAST_WITH_NULL,
-        )
+        record = self._conform_to_columns(record)
         return record
 
     @classmethod
@@ -131,6 +126,21 @@ class Handler(ABC):
             for k, v in record.items()
             if rename_map.get(k) != cls.DELETE
         }
+
+    def _conform_to_columns(self, record: RecordDict) -> RecordDict:
+        """
+        Conform a record to match the handler schema's columns.
+
+        .. note::
+            This does not check or cast the column dtypes.
+        """
+        record_: RecordDict = {}
+        for name in self.schema.names:
+            if name in record:
+                record_[name] = record[name]
+            elif self.CAST_WITH_NULL:
+                record_[name] = None
+        return record_
 
     @classmethod
     @abstractmethod

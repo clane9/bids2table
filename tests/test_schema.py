@@ -28,10 +28,14 @@ def fields() -> Dict[str, Tuple[DataType, pa.DataType]]:
         "c": ("str", pa.string()),
         "d": (np.float32, pa.float32()),
         "e": ("datetime64[ns]", pa.timestamp("ns")),
-        "f": ("list<float32>", pa.list_(pa.float32())),
+        "f": ("list<item: float32>", pa.list_(pa.float32())),
         "g": (
             "struct < A: int, B: str >",
             pa.struct({"A": pa.int64(), "B": pa.string()}),
+        ),
+        "h": (
+            "struct< data: list<double>, shape: list<int64> >",
+            pa.struct({"data": pa.list_(pa.float64()), "shape": pa.list_(pa.int64())}),
         ),
     }
 
@@ -44,6 +48,9 @@ def record() -> RecordDict:
         "c": "abc",
         "f": np.ones(10),
         "e": datetime.now(),
+        # NOTE: pyarrow can't cast structs with list values. Get a
+        # pyarrow.lib.ArrowNotImplementedError in cast_to_schema.
+        # "h": {"data": np.ones(10), "shape": np.array([10])},
     }
 
 
