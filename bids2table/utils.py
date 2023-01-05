@@ -13,6 +13,8 @@ from fnmatch import fnmatch
 from glob import glob
 from pathlib import Path
 from typing import (
+    Any,
+    Callable,
     Dict,
     Generic,
     Iterable,
@@ -25,6 +27,7 @@ from typing import (
 )
 
 T = TypeVar("T")
+StrOrPath = Union[str, Path]
 
 
 class PatternLUT(Generic[T]):
@@ -60,7 +63,7 @@ class PatternLUT(Generic[T]):
             match_whole = "/" in pattern
             self._items_by_suffix[suffix].append((pattern, match_whole, val))
 
-    def lookup(self, path: Union[str, Path]) -> Iterator[Tuple[str, T]]:
+    def lookup(self, path: StrOrPath) -> Iterator[Tuple[str, T]]:
         """
         Lookup one or more items for a path by glob pattern matching.
         """
@@ -71,8 +74,67 @@ class PatternLUT(Generic[T]):
                 yield pattern, val
 
 
+class FilePointer(Generic[T]):
+    """
+    A file pointer that knows how to read itself.
+
+    Args:
+        path: file path
+        reader: a callable for reading the file
+        cache: whether to cache the object after reading
+
+    .. note::
+        If you want to pickle a file pointer (which is what it's most useful for), the
+        reader function must be picklable. In particular, custom user-defined functions
+        that would be inaccessible in the unpickling environment aren't supported.
+        Alternatively, pickle replacements like dill or cloudpickle could be used.
+    """
+
+    def __init__(
+        self,
+        path: StrOrPath,
+        reader: Callable[[StrOrPath], T],
+        cache: bool = True,
+    ):
+        self._path = Path(path)
+        self._reader = reader
+        self.cache = cache
+        self._cache_obj: Optional[T] = None
+
+    def get(self) -> T:
+        """
+        Load the object referenced by the pointer path.
+        """
+        if self._cache_obj is not None:
+            return self._cache_obj
+
+        obj = self._reader(self._path)
+        if self.cache:
+            self._cache_obj = obj
+        return obj
+
+    def rebase(self, old_prefix: StrOrPath, new_prefix: StrOrPath):
+        """
+        Rebase the pointer path replacing the ``old_prefix`` with ``new_prefix``.
+        """
+        self._path = new_prefix / self._path.relative_to(old_prefix)
+
+    @property
+    def path(self) -> Path:
+        """
+        The pointer path.
+        """
+        return self._path
+
+    def __getstate__(self) -> Dict[str, Any]:
+        # be sure to remove the cached object from the state before pickling.
+        state = self.__dict__.copy()
+        state["_cache_obj"] = None
+        return state
+
+
 @contextmanager
-def lockopen(path: Union[str, Path], mode: str = "w", **kwargs):
+def lockopen(path: StrOrPath, mode: str = "w", **kwargs):
     """
     Open a file with an exclusive lock.
 
@@ -88,7 +150,7 @@ def lockopen(path: Union[str, Path], mode: str = "w", **kwargs):
 
 
 @contextmanager
-def atomicopen(path: Union[str, Path], mode: str = "w", **kwargs):
+def atomicopen(path: StrOrPath, mode: str = "w", **kwargs):
     """
     Open a file for "atomic" all-or-nothing writing. Only write modes are supported.
     """
@@ -116,7 +178,7 @@ def atomicopen(path: Union[str, Path], mode: str = "w", **kwargs):
 
 @contextmanager
 def waitopen(
-    path: Union[str, Path],
+    path: StrOrPath,
     mode: str = "r",
     timeout: Optional[float] = None,
     delay: float = 0.1,
@@ -136,7 +198,7 @@ def waitopen(
 
 
 def wait_for_file(
-    path: Union[str, Path],
+    path: StrOrPath,
     timeout: Optional[float] = None,
     delay: float = 0.1,
 ):
@@ -156,7 +218,7 @@ def wait_for_file(
 def expand_paths(
     paths: Iterable[str],
     recursive: bool = True,
-    root: Optional[Union[str, Path]] = None,
+    root: Optional[StrOrPath] = None,
 ) -> List[str]:
     """
     Expand any glob patterns in ``paths`` and make paths absolute.
@@ -227,7 +289,7 @@ def detect_size_units(size: Union[int, float]) -> Tuple[float, str]:
         return size / 1e9, "GB"
 
 
-def import_module_from_path(path: Union[str, Path], prepend_sys_path: bool = True):
+def import_module_from_path(path: StrOrPath, prepend_sys_path: bool = True):
     """
     Import a module or package from a file or directory path.
     """
