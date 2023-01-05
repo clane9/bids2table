@@ -133,6 +133,27 @@ class FilePointer(Generic[T]):
         return state
 
 
+def fix_path(
+    path: StrOrPath,
+    resolve: bool = False,
+    parent: Optional[str] = None,
+    posix: bool = False,
+) -> str:
+    """
+    Fix a path:
+
+        - Optionally resolve the path.
+        - Set relative to ``parent``.
+        - Force posix (/-separated)
+    """
+    path = Path(path)
+    if resolve:
+        path = path.resolve()
+    if parent:
+        path = path.relative_to(parent)
+    return path.as_posix() if posix else str(path)
+
+
 @contextmanager
 def lockopen(path: StrOrPath, mode: str = "w", **kwargs):
     """
@@ -318,3 +339,14 @@ def insert_sys_path(path: str, prepend: bool = True):
     finally:
         if inserted:
             sys.path.remove(path)
+
+
+def module_available(name: str) -> bool:
+    """
+    Check if a module is available.
+    """
+    try:
+        importlib.import_module(name)
+        return True
+    except ModuleNotFoundError:
+        return False

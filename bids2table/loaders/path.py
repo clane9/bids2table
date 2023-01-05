@@ -1,7 +1,7 @@
-from pathlib import Path
 from typing import Optional
 
 from bids2table.types import RecordDict, StrOrPath
+from bids2table.utils import fix_path
 
 from .registry import register_loader
 
@@ -10,16 +10,14 @@ from .registry import register_loader
 def load_path(
     path: StrOrPath,
     *,
+    resolve: bool = False,
     parent: Optional[str] = None,
-    as_posix: bool = False,
+    posix: bool = False,
 ) -> Optional[RecordDict]:
     """
     Return a ``dict`` with a single key ``"path"`` whose value is just the string
-    ``path``, optionally relative to ``parent`` and as a posix path if
-    ``as_posix`` is ``True``.
+    ``path``, optionally resolved and relative to ``parent`` and as a posix path if
+    ``posix`` is ``True``.
     """
-    path = Path(path)
-    if parent:
-        path = path.relative_to(parent)
-    path = path.as_posix() if as_posix else str(path)
+    path = fix_path(path, resolve=resolve, parent=parent, posix=posix)
     return {"path": path}
