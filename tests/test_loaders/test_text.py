@@ -94,9 +94,7 @@ def test_load_json_dict_no_nesting(json_dict: Path, record: Dict[str, Any]):
 
 def test_load_array_tsv(array_tsv: Path, random_array: np.ndarray):
     loaded_record = text.load_array_tsv(array_tsv)
-    loaded_array = loaded_record["array"]["data"].reshape(
-        loaded_record["array"]["shape"]
-    )
+    loaded_array = loaded_record["array"]
     random_array = np.squeeze(random_array)
     assert loaded_array.shape == random_array.shape
     assert np.all(loaded_array == random_array)

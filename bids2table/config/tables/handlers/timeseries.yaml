@@ -7,4 +7,5 @@ timeseries:
   label: timeseries
   loader:
     name: load_array_tsv
-  example: array.tsv
+  fields:
+    array: ndarray<float32>

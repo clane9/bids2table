@@ -59,54 +59,19 @@ def load_single_row_tsv(
     return record
 
 
-# TODO: How to handle the case where there are many variations of the same type of file.
-# E.g. many tsv matrices corresponding to different atlases.
-#
-#   sub-NDARAA306NT2_ses-HBNsiteRU_task-rest_run-1_atlas-Juelichspace-MNI152NLin6res-2x2x2_desc-PearsonNilearn_correlations.tsv
-#
-# We don't necessarily want each one in a different row. But we don't want to have to
-# write a separate handler for each either.
-#
-# I think the approach should be to generate handlers in a loop. And then possibly be
-# able select handlers using a glob pattern.
-
-
 @register_loader
 def load_array_tsv(
     path: StrOrPath,
     *,
     sep: str = "\t",
     dtype: str = "float",
-    triangular: bool = False,
-    tri_k: int = 0,
 ) -> Optional[Dict[str, np.ndarray]]:
     """
-    Load an array (vector or matrix) represented as a tsv file.
-
-    If ``triangular``, the array is assumed to be a matrix. The upper triangular
-    portion of the matrix is extracted and flattened, starting from the
-    ``tri_k`` diagonal.
-
-    Returns a ``dict`` with a single key ``"array"`` mapping to a nested
-    ``dict`` with the following fields:
-
-        shape: original array shape
-        data: flattened numpy array
-        triangular: ``bool`` indicating whether just the upper triangular
-            portion is stored
-        tri_k: triangular diagonal offset
+    Load an array (vector or matrix) represented as a tsv file. Returns a ``dict`` with
+    a single key ``"array"`` mapping to a numpy ndarray.
     """
-    arr: np.ndarray = np.loadtxt(path, delimiter=sep, dtype=dtype)
-    shape = arr.shape
-    if triangular:
-        assert arr.ndim == 2, "a matrix is expected when ``triangular`` is ``True``"
-        n, m = shape
-        arr = arr[np.triu_indices(n=n, k=tri_k, m=m)]
-    else:
-        arr = arr.flatten()
-    record = {
-        "array": {"shape": shape, "data": arr, "triangular": triangular, "tri_k": tri_k}
-    }
+    array: np.ndarray = np.loadtxt(path, delimiter=sep, dtype=dtype)
+    record = {"array": array}
     return record
 
 

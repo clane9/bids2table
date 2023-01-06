@@ -7,7 +7,5 @@ conmat:
   label: conmat
   loader:
     name: load_array_tsv
-    kwargs:
-      triangular: true
-      tri_k: 1
-  example: array.tsv
+  fields:
+    array: ndarray<float32>

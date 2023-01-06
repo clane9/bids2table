@@ -1,12 +1,12 @@
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Mapping, Optional
 
 import pyarrow as pa
 from omegaconf import MISSING
 
 from bids2table.loaders import Loader, LoaderConfig, PartialLoader
 from bids2table.path import locate_file
-from bids2table.schema import Fields, get_fields
+from bids2table.schema import DataType, get_fields
 from bids2table.types import RecordDict, StrOrPath
 
 from .handler import Handler, HandlerConfig
@@ -35,7 +35,7 @@ class WrapHandler(Handler):
         self,
         loader: Loader,
         example: Optional[StrOrPath] = None,
-        fields: Optional[Fields] = None,
+        fields: Optional[Mapping[str, DataType]] = None,
         metadata: Optional[Dict[str, str]] = None,
         rename_map: Optional[Dict[str, str]] = None,
         overlap_threshold: float = 0.25,
@@ -51,6 +51,14 @@ class WrapHandler(Handler):
                 raise ValueError(
                     f"Example {example} is empty or could not be loaded by {loader}"
                 )
+            # Replace any items that will be overridden by the fields arg with a
+            # placeholder. This way, if there are items whose type can't be inferred
+            # (e.g. extension types), the user can correct the error by overriding with
+            # fields. Note that we replace with placeholder rather than remove to
+            # preserve column order.
+            if fields is not None:
+                record = {k: (0 if k in fields else v) for k, v in record.items()}
+
             batch = pa.RecordBatch.from_pylist([record])
             fields_ = get_fields(batch.schema)
         if fields is not None:
