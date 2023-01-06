@@ -1,11 +1,13 @@
 import logging
 import os
+import pickle
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List
 
+import pandas as pd
 import pytest
 
 from bids2table import utils as ut
@@ -42,6 +44,26 @@ def test_pattern_lut(pattern_lut: ut.PatternLUT, path: str, expected: List[int])
     logging.debug(f"path={path}\tmatches={matches}")
     value_matches = [v[1] for v in matches]
     assert value_matches == expected
+
+
+def test_file_pointer(tmp_path: Path):
+    fname = tmp_path / "table.csv"
+    df = pd.DataFrame({"a": [1, 2, 3], "b": [99.9, 9.9, 9.0]})
+    df.to_csv(fname, index=False)
+
+    pointer = ut.FilePointer(fname, pd.read_csv)
+    df2 = pointer.get()
+    assert df.equals(df2)
+
+    pointer2: ut.FilePointer = pickle.loads(pickle.dumps(pointer))
+    assert pointer2._cache_obj is None
+    df3 = pointer2.get()
+    assert df.equals(df3)
+
+    pointer = pointer.rebase(tmp_path, tmp_path / "blah")
+    assert str(pointer) == str(tmp_path / "blah" / "table.csv")
+    with pytest.raises(FileNotFoundError):
+        pointer.get()
 
 
 def test_lockopen(tmp_path: Path):

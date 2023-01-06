@@ -1,6 +1,7 @@
 import fcntl
 import importlib
 import importlib.util
+import inspect
 import logging
 import os
 import re
@@ -97,9 +98,14 @@ class FilePointer(Generic[T]):
         cache: bool = True,
     ):
         self._path = Path(path)
-        self._reader = reader
+        self.reader = reader
         self.cache = cache
+
         self._cache_obj: Optional[T] = None
+        self.target_type: Optional[type] = None
+        sig = inspect.signature(reader)
+        if sig.return_annotation != sig.empty:
+            self.target_type = sig.return_annotation
 
     def get(self) -> T:
         """
@@ -108,16 +114,23 @@ class FilePointer(Generic[T]):
         if self._cache_obj is not None:
             return self._cache_obj
 
-        obj = self._reader(self._path)
+        if not self.path.exists():
+            raise FileNotFoundError(f"pointer path {self.path} does not exist")
+
+        obj = self.reader(self.path)
         if self.cache:
             self._cache_obj = obj
         return obj
 
-    def rebase(self, old_prefix: StrOrPath, new_prefix: StrOrPath):
+    def rebase(self, old_prefix: StrOrPath, new_prefix: StrOrPath) -> "FilePointer":
         """
         Rebase the pointer path replacing the ``old_prefix`` with ``new_prefix``.
+
+        TODO: this won't handle the case where a prefix of the base filename has changed
         """
         self._path = new_prefix / self._path.relative_to(old_prefix)
+        self._cache_obj = None
+        return self
 
     @property
     def path(self) -> Path:
@@ -131,6 +144,16 @@ class FilePointer(Generic[T]):
         state = self.__dict__.copy()
         state["_cache_obj"] = None
         return state
+
+    def __str__(self) -> str:
+        return str(self.path)
+
+    def __repr__(self) -> str:
+        if self.target_type is not None:
+            type_annot = f"[{self.target_type.__name__}]"
+        else:
+            type_annot = ""
+        return f'{self.__class__.__name__}{type_annot}("{self.path}")'
 
 
 def fix_path(
