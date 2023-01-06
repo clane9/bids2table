@@ -49,9 +49,11 @@ class IncrementalTable:
             sep=self.SEP,
         )
         self._columns = set(self._combined_schema.names)
-        self._has_ext_types = any(
-            isinstance(f.type, PaPyExtensionType) for f in self._combined_schema
-        )
+        self._ext_columns = {
+            f.name
+            for f in self._combined_schema
+            if isinstance(f.type, PaPyExtensionType)
+        }
         self._table: Dict[Tuple[Any, ...], RecordDict] = {}
 
     def put(self, key: RecordDict, record: RecordDict, group: Optional[str] = None):
@@ -88,8 +90,8 @@ class IncrementalTable:
             )
 
         # pack i.e. re-format extension type data
-        if self._has_ext_types:
-            record = self._pack_ext_data(record, self._combined_schema)
+        if self._ext_columns:
+            record = self._pack_ext_data(record)
 
         row.update(record)
         self._table[key_tup] = row
@@ -101,15 +103,13 @@ class IncrementalTable:
         """
         return {f"{prefix}{cls.SEP}{k}": v for k, v in record.items()}
 
-    @staticmethod
-    def _pack_ext_data(record: RecordDict, schema: pa.Schema) -> RecordDict:
+    def _pack_ext_data(self, record: RecordDict) -> RecordDict:
         """
         For any fields with extension types, pack the data for consumption in pyarrow.
         """
-        for k, v in record.items():
-            typ = schema.field(k).type
-            if isinstance(typ, PaPyExtensionType):
-                record[k] = typ.pack(v)
+        for k in self._ext_columns.intersection(record.keys()):
+            typ = self._combined_schema.field(k).type
+            record[k] = typ.pack(record[k])
         return record
 
     def as_table(self) -> pa.Table:
