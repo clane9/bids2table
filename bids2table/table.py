@@ -49,12 +49,18 @@ class IncrementalTable:
             sep=self.SEP,
         )
         self._columns = set(self._combined_schema.names)
+        self._has_ext_types = any(
+            isinstance(f.type, PaPyExtensionType) for f in self._combined_schema
+        )
         self._table: Dict[Tuple[Any, ...], RecordDict] = {}
 
     def put(self, key: RecordDict, record: RecordDict, group: Optional[str] = None):
         """
         Insert ``record`` at the row indexed by ``key`` under ``group``.
         """
+        # shallow copy since we may manipulate in place
+        record = record.copy()
+
         key_tup = tuple(key[k] for k in self.index_schema.names)
         row = self._table.get(key_tup, {})
         if len(row) == 0:
@@ -81,7 +87,9 @@ class IncrementalTable:
                 f"\t{', '.join(updating_cols)}"
             )
 
-        record = self._pack_ext_data(record, self._combined_schema)
+        # pack i.e. re-format extension type data
+        if self._has_ext_types:
+            record = self._pack_ext_data(record, self._combined_schema)
 
         row.update(record)
         self._table[key_tup] = row
@@ -98,13 +106,11 @@ class IncrementalTable:
         """
         For any fields with extension types, pack the data for consumption in pyarrow.
         """
-        record_ = {}
         for k, v in record.items():
             typ = schema.field(k).type
             if isinstance(typ, PaPyExtensionType):
-                v = typ.pack(v)
-            record_[k] = v
-        return record_
+                record[k] = typ.pack(v)
+        return record
 
     def as_table(self) -> pa.Table:
         """
