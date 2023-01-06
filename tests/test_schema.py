@@ -37,6 +37,20 @@ def fields() -> Dict[str, Tuple[DataType, pa.DataType]]:
             "struct< data: list<double>, shape: list<int64> >",
             pa.struct({"data": pa.list_(pa.float64()), "shape": pa.list_(pa.int64())}),
         ),
+        # nested struct field
+        "i": (
+            (
+                "struct< A: struct< a: int32, b: float32 >, "
+                "B: list<float32> , C: struct<c: list<int32>> >"
+            ),
+            pa.struct(
+                {
+                    "A": pa.struct({"a": pa.int32(), "b": pa.float32()}),
+                    "B": pa.list_(pa.float32()),
+                    "C": pa.struct({"c": pa.list_(pa.int32())}),
+                }
+            ),
+        ),
     }
 
 
@@ -144,4 +158,4 @@ def test_concat_schemas(
 
 
 if __name__ == "__main__":
-    pytest.main([__file__])
+    pytest.main(["-x", __file__])

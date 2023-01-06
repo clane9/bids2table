@@ -90,25 +90,43 @@ def _struct_from_string(alias: str) -> Optional[pa.DataType]:
     match = re.match(r"^struct\s*<(.+)>$", alias)
     if match is None:
         return None
+
     fields = []
     items = match.group(1)
-    # Can't parse nested structs so easily, so just fail on these for now.
-    # The issue is splitting on "," will also split the nested struct.
-    if "struct" in items:
-        raise ValueError(f"Invalid struct alias {alias}; nested structs not supported")
-    items = items.split(",")
     try:
-        for item in items:
+        while items:
+            end = _find_split(items)
+            if end == -1:
+                item, items = items, ""
+            else:
+                item, items = items[:end], items[(end + 1) :]
+
             # Split just on the first ":" in case you have a field like
             # "data: list<item: double>"
             split = item.find(":")
             if split < 0:
                 raise ValueError
-            name, alias = item[:split], item[split + 1 :]
-            fields.append((name.strip(), get_dtype(alias)))
+            name, item_alias = item[:split], item[(split + 1) :]
+            fields.append((name.strip(), get_dtype(item_alias)))
     except ValueError:
         raise ValueError(f"Invalid struct alias {alias}")
     return pa.struct(fields)
+
+
+def _find_split(items: str):
+    """
+    Find next comma split, ignoring regions nested in ``"< >"`` (which can contain
+    commas that well mess up parsing in the case of nested structs).
+    """
+    nest_count = 0
+    for ii, c in enumerate(items):
+        if c == "<":
+            nest_count += 1
+        elif c == ">":
+            nest_count -= 1
+        elif c == "," and nest_count == 0:
+            return ii
+    return -1
 
 
 def _list_from_string(alias: str) -> Optional[pa.DataType]:
