@@ -18,7 +18,10 @@ __all__ = [
 
 class PaNDArrayType(PaPyExtensionType):
     """
-    PyArrow ndarray extension type.
+    PyArrow ndarray extension type backed by a struct with fields:
+
+        - data: flattened array data
+        - shape: original array shape
 
     See `here <https://arrow.apache.org/docs/python/extending_types.html>`_ for more
     details on extension types.
@@ -46,11 +49,15 @@ class PaNDArrayType(PaPyExtensionType):
 
     def pack(self, value: np.ndarray) -> Dict[str, Any]:
         """
-        Pack an object so it can be consumed by pyarrow with this type
+        Convert an array to a dict with ``"data"`` and ``"shape"`` fields, for pyarrow
+        consumption.
         """
         dtype = self.item_type.to_pandas_dtype()
         data = value.flatten().astype(dtype)
         return {"data": data, "shape": value.shape}
+
+    def __str__(self) -> str:
+        return f"ndarray<item: {self.item_type}>"
 
 
 class PaNDArrayScalar(pa.ExtensionScalar):

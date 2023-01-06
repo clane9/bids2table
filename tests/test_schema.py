@@ -9,6 +9,7 @@ import yaml
 from pytest import FixtureRequest
 
 from bids2table import RecordDict
+from bids2table.extensions import PaNDArrayType, PaPickleType
 from bids2table.schema import (
     DataType,
     cast_to_schema,
@@ -51,6 +52,8 @@ def fields() -> Dict[str, Tuple[DataType, pa.DataType]]:
                 }
             ),
         ),
+        "j": ("pickle", PaPickleType()),
+        "k": ("ndarray<float32>", PaNDArrayType(pa.float32())),
     }
 
 

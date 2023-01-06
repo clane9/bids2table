@@ -46,6 +46,9 @@ class PaPickleType(PaPyExtensionType):
         """
         return pickle.dumps(value)
 
+    def __str__(self) -> str:
+        return "pickle"
+
 
 class PaPickleScalar(pa.ExtensionScalar):
     """

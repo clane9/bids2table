@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pyarrow as pa
 
+from bids2table.extensions import PaNDArrayType, PaPickleType
 from bids2table.types import RecordDict
 
 __all__ = [
@@ -50,9 +51,13 @@ def get_dtype(alias: DataType) -> pa.DataType:
     The following nested type aliases are also supported:
 
     - ``"array<TYPE>"`` -> ``pa.list_(TYPE)``
-    - ``"list<TYPE>"`` -> ``pa.list_(TYPE)``
-    - ``"list<item: TYPE>"`` -> ``pa.list_(TYPE)``
+    - ``"list<(item:)? TYPE>"`` -> ``pa.list_(TYPE)``
     - ``"struct<NAME: TYPE, ...>"`` -> ``pa.struct({NAME: TYPE, ...})``
+
+    The following extension types are also supported:
+
+    - ``"pickle"`` -> ``PaPickleType()``
+    - ``"ndarray<(item:)? TYPE>"`` -> ``PaNDArrayType(TYPE)``
 
     .. _here: https://github.com/apache/arrow/blob/go/v10.0.0/python/pyarrow/types.pxi#L3159
     """
@@ -61,11 +66,18 @@ def get_dtype(alias: DataType) -> pa.DataType:
 
     alias = alias.strip()
 
+    if alias == "pickle":
+        return PaPickleType()
+
     dtype = _struct_from_string(alias)
     if dtype is not None:
         return dtype
 
     dtype = _list_from_string(alias)
+    if dtype is not None:
+        return dtype
+
+    dtype = _ndarray_from_string(alias)
     if dtype is not None:
         return dtype
 
@@ -138,6 +150,15 @@ def _list_from_string(alias: str) -> Optional[pa.DataType]:
     return pa.list_(dtype)
 
 
+def _ndarray_from_string(alias: str) -> Optional[pa.DataType]:
+    match = re.match(r"^ndarray\s*<(?:\s*item\s*:)?(.+)>$", alias)
+    if match is None:
+        return None
+    alias = match.group(1)
+    dtype = get_dtype(alias)
+    return PaNDArrayType(dtype)
+
+
 def get_fields(schema: pa.Schema) -> Dict[str, pa.DataType]:
     """
     Extract a dict mapping column names to pyarrow dtypes from a pyarrow schema.
@@ -185,6 +206,9 @@ def cast_to_schema(
     missing otherwise.
 
     Raises ``ArrowInvalid`` if a data value cannot be converted.
+
+    TODO: Is this still useful? It was found to be a problem for some complex nested
+    types and removed from the handlers.
     """
     record_: RecordDict = {}
     for name, dtype in get_fields(schema).items():
