@@ -3,13 +3,14 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import pyarrow as pa
 
+from bids2table.extensions import PaPyExtensionType
 from bids2table.schema import concat_schemas
 from bids2table.types import RecordDict
 
 
 class IncrementalTable:
     """
-    A table that you can build up incrementally.
+    A pyarrow table that you can build up incrementally.
 
     Args:
         index_schema: Schema for the index columns.
@@ -80,6 +81,8 @@ class IncrementalTable:
                 f"\t{', '.join(updating_cols)}"
             )
 
+        record = self._pack_ext_data(record, self._combined_schema)
+
         row.update(record)
         self._table[key_tup] = row
 
@@ -89,6 +92,19 @@ class IncrementalTable:
         Prepend a prefix to all the record keys.
         """
         return {f"{prefix}{cls.SEP}{k}": v for k, v in record.items()}
+
+    @staticmethod
+    def _pack_ext_data(record: RecordDict, schema: pa.Schema) -> RecordDict:
+        """
+        For any fields with extension types, pack the data for consumption in pyarrow.
+        """
+        record_ = {}
+        for k, v in record.items():
+            typ = schema.field(k).type
+            if isinstance(typ, PaPyExtensionType):
+                v = typ.pack(v)
+            record_[k] = v
+        return record_
 
     def as_table(self) -> pa.Table:
         """
