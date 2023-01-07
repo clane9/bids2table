@@ -8,6 +8,9 @@ __all__ = ["register_loader", "get_loader"]
 _LOADER_REGISTRY: Dict[str, Loader] = {}
 
 
+# TODO: defining the decorator in this way, handling two cases at once (with and without
+# name) can mess up the type inference and intellisense for loaders. Is there a way to
+# fix this (other than splitting into two decorators)?
 def register_loader(fun: Optional[Loader] = None, *, name: Optional[str] = None):
     """
     A decorator to register a ``Loader``
