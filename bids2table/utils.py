@@ -98,7 +98,7 @@ class FilePointer(Generic[T]):
         cache: bool = True,
     ):
         self._path = Path(path)
-        self.reader = reader
+        self._reader = reader
         self.cache = cache
 
         self._cache_obj: Optional[T] = None
@@ -139,14 +139,18 @@ class FilePointer(Generic[T]):
         """
         return self._path
 
+    @property
+    def reader(self) -> Callable[[StrOrPath], T]:
+        """
+        The file reader
+        """
+        return self._reader
+
     def __getstate__(self) -> Dict[str, Any]:
         # be sure to remove the cached object from the state before pickling.
         state = self.__dict__.copy()
         state["_cache_obj"] = None
         return state
-
-    def __str__(self) -> str:
-        return str(self.path)
 
     def __repr__(self) -> str:
         if self.target_type is not None:
@@ -159,7 +163,7 @@ class FilePointer(Generic[T]):
 def fix_path(
     path: StrOrPath,
     resolve: bool = False,
-    parent: Optional[str] = None,
+    parent: Optional[StrOrPath] = None,
     posix: bool = False,
 ) -> str:
     """

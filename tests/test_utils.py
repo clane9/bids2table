@@ -61,9 +61,15 @@ def test_file_pointer(tmp_path: Path):
     assert df.equals(df3)
 
     pointer = pointer.rebase(tmp_path, tmp_path / "blah")
-    assert str(pointer) == str(tmp_path / "blah" / "table.csv")
+    assert str(pointer.path) == str(tmp_path / "blah" / "table.csv")
     with pytest.raises(FileNotFoundError):
         pointer.get()
+
+
+def test_fix_path(tmp_path: Path):
+    tmp_fname = tmp_path / "blah" / "file.txt"
+    fixed_fname = ut.fix_path(tmp_fname, resolve=True, parent=tmp_path, posix=True)
+    assert fixed_fname == "blah/file.txt"
 
 
 def test_lockopen(tmp_path: Path):
