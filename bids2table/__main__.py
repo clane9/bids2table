@@ -1,7 +1,7 @@
 import argparse
 import json
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import yaml
 from hydra import compose, initialize_config_dir, initialize_config_module
@@ -10,7 +10,7 @@ from omegaconf import OmegaConf
 from bids2table.engine import launch
 
 
-def main():
+def _main(args: Optional[argparse.Namespace] = None):
     """
     Main command-line program
     """
@@ -44,7 +44,8 @@ def main():
         help="list of config overrides",
     )
 
-    args = parser.parse_args()
+    if args is None:
+        args = parser.parse_args()
 
     # load overrides
     if args.overrides_yaml:
@@ -73,7 +74,9 @@ def main():
     if args.print_only:
         print(OmegaConf.to_yaml(cfg))
     else:
-        launch(cfg)
+        # DictConfig duck-typed as a Config, ignore type error
+        # TODO: is there a better way to handle this?
+        launch(cfg)  # type: ignore
 
 
 def _load_overrides_yaml(path: str) -> List[str]:
@@ -94,9 +97,12 @@ def _load_overrides_yaml(path: str) -> List[str]:
         if isinstance(arg, dict) and len(arg) == 1:
             k, v = list(arg.items())[0]
             overrides.append(f"{k}={json.dumps(v)}")
+        elif isinstance(arg, str) and arg.count("=") == 1:
+            overrides.append(arg)
         else:
             raise ValueError(
-                f"Invalid YAML overrides; expected a `key: value` pair; got `{arg}`"
+                "Invalid YAML overrides; expected a `key: value` or `key=value` pair; "
+                f"got `{arg}`"
             )
     return overrides
 
@@ -109,8 +115,9 @@ def _merge_overrides(overrides: List[str], other: List[str]) -> List[str]:
     for arg in overrides + other:
         key, val = arg.strip().split("=")
         merged[key] = val
-    return [f"{k}={v}" for k, v in merged.items()]
+    overrides = [f"{k}={v}" for k, v in merged.items()]
+    return overrides
 
 
 if __name__ == "__main__":
-    main()
+    _main()
