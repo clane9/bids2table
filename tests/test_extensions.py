@@ -186,7 +186,7 @@ def test_to_parquet(ext_data: ExtData, tmp_path: Path):
 
 def _equals(a: Any, b: Any) -> bool:
     if isinstance(a, np.ndarray):
-        return np.all(a == b)
+        return bool(np.all(a == b))
     elif isinstance(a, (pd.Series, pd.DataFrame)):
         return a.equals(b)
     else:

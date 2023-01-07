@@ -73,7 +73,8 @@ def _load_config(_overrides: List[str]) -> Config:
     ):
         cfg = compose(config_name="mriqc", overrides=_overrides)
     logging.info(f"config:\n{OmegaConf.to_yaml(cfg)}")
-    return cfg
+    # DictConfig duck-typed as a Config, ignore type error
+    return cfg  # type: ignore
 
 
 def _load_local_config(_overrides: List[str]) -> Config:
@@ -81,7 +82,7 @@ def _load_local_config(_overrides: List[str]) -> Config:
     with initialize("config_local", version_base="1.2", job_name="bids2table"):
         cfg = compose(config_name="mriqc_local", overrides=_overrides)
     logging.info(f"config:\n{OmegaConf.to_yaml(cfg)}")
-    return cfg
+    return cfg  # type: ignore
 
 
 if __name__ == "__main__":

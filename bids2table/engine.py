@@ -4,7 +4,7 @@ import socket
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, Iterable, List, Tuple
 
 import numpy as np
 from omegaconf import OmegaConf
@@ -100,7 +100,7 @@ def launch(cfg: Config):
 
 def _generate_tables(
     cfg: Config,
-    paths: List[str],
+    paths: Iterable[str],
     indexers_map: IndexersMap,
     handlers_map: HandlersMap,
 ):
@@ -142,6 +142,7 @@ def _generate_tables(
     try:
         for path in paths:
             dir_counts.total += 1
+            path = str(path)
             if not Path(path).is_dir():
                 logging.warning(f"Skipping path {path}; not a directory")
                 continue
@@ -257,7 +258,7 @@ def _load_paths(cfg: Config) -> np.ndarray:
     return filtered_paths
 
 
-def _partition_paths(cfg: Config, paths: np.ndarray) -> List[str]:
+def _partition_paths(cfg: Config, paths: np.ndarray) -> np.ndarray:
     """
     Partition the paths according to worker and return the slice for this ``worker_id``.
     Note the slice can be empty if ``cfg.paths.min_per_worker`` is large.
@@ -271,7 +272,7 @@ def _partition_paths(cfg: Config, paths: np.ndarray) -> List[str]:
     if start >= len(paths):
         return np.array([], dtype=str)
     stop = min(len(paths), start + worker_num_paths)
-    sub_paths = paths[start:stop].tolist()
+    sub_paths = paths[start:stop]
     return sub_paths
 
 

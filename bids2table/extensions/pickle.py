@@ -44,6 +44,9 @@ class PaPickleType(PaPyExtensionType):
         """
         Pack an object by serializing with pickle
         """
+        # TODO: could imagine dropping in different pickle implementations here, perhaps
+        # using a parameter on the type to select which one. This way, the data that
+        # needs it can use more portable pickling.
         return pickle.dumps(value)
 
     def __str__(self) -> str:
