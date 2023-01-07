@@ -117,27 +117,43 @@ class ProcessedLog:
         """
         Filter a list of paths against those we've already processed successfully.
         """
-        # Pick out the processed paths that are also in the current todo list.
-        overlap_mask = np.isin(self.df["path"], paths)
-        if overlap_mask.sum() == 0:
+        # Join current todo list with previously processed paths.
+        todo_df = pd.DataFrame(
+            {"path": paths, "indices": np.arange(len(paths))}, index=paths
+        )
+        log_df = self.df.set_index("path")
+        todo_df = todo_df.join(log_df, how="left")
+
+        # If all paths are new, nothing to filter.
+        new_mask = todo_df["collection_id"].isna().values
+        if new_mask.sum() == len(paths):
             return paths
-        maybe_redo = self.df.loc[overlap_mask, :]
+
+        # Initialize the redo mask to be the full overlap. We'll filter out successfully
+        # processed paths.
+        redo_mask = ~new_mask
+        maybe_redo_df = todo_df.loc[redo_mask, :]
 
         # Find partitions that were successfully written out.
-        exists_mask = maybe_redo["partitions"].apply(
-            partial(_all_exist, root=self.db_dir)
+        success_mask = (
+            maybe_redo_df["partitions"]
+            .apply(partial(_all_exist, root=self.db_dir))
+            .values
         )
 
         # And the paths that were processed without too many errors.
-        success_mask = exists_mask
         if error_rate_threshold is not None:
             success_mask = success_mask & (
-                maybe_redo["error_rate"] <= error_rate_threshold
+                maybe_redo_df["error_rate"].values <= error_rate_threshold
             )
 
-        # Filter out paths that were already completed successfully.
-        success_paths = maybe_redo.loc[success_mask, "path"].values
-        paths = np.setdiff1d(paths, success_paths)
+        # Only redo paths that previously failed.
+        redo_mask[redo_mask] = ~success_mask
+
+        # Construct final todo paths. Use indices to guarantee original order.
+        todo_mask = new_mask | redo_mask
+        todo_df = todo_df.loc[todo_mask, :]
+        paths = paths[todo_df["indices"]]
         return paths
 
 
