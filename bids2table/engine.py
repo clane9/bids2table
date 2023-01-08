@@ -1,3 +1,22 @@
+"""
+Main bids2table ETL engine.
+
+- **Input**: Structured directory of data files (e.g. a BIDS directory).
+- **Output**: Parquet database.
+
+Example:
+
+.. code-block:: python
+
+    from hydra import compose, initialize_config_module
+    from bids2table import launch
+
+    overrides = ["collection_id=20221212", "dry_run=true"]
+    with initialize_config_module("bids2table.config", job_name="bids2table"):
+        cfg = compose(config_name="mriqc", overrides=overrides)
+    launch(cfg)
+"""
+
 import logging
 import os
 import socket
@@ -25,9 +44,18 @@ WritersMap = Dict[str, BufferedParquetWriter]
 
 def launch(cfg: Config):
     """
-    Launch a bids2table generation process.
-    """
+    Launch the bids2table collection task defined by the config ``cfg``, which should be
+    compatible with the `Hydra structured config`_ :class:`bids2table.config.Config`.
 
+    The primary input is a list of data directories defined in ``cfg.paths``.
+
+    The output is one Parquet directory per table defined in ``cfg.tables``. Parquet
+    directories are organized as::
+
+        {db_dir} / {table_name} / {collection_id} / {worker_id} / {partition}.parquet
+
+    .. _Hydra structured config: https://hydra.cc/docs/tutorials/structured_config/intro/
+    """
     run_log_dir = Path(cfg.log_dir) / cfg.collection_id
     if not cfg.dry_run:
         run_log_dir.mkdir(parents=True, exist_ok=True)
@@ -106,10 +134,6 @@ def _generate_tables(
 ):
     """
     Main loop.
-
-    Table partitions are written to::
-
-        {db_dir} / {table_name} / {collection_id} / {worker_id} /
     """
     worker_id_str = format_worker_id(cfg.worker_id)
 

@@ -2,7 +2,7 @@
 Main bids2table command-line entry point.
 
 Callable as ``python -m bids2table`` or ``bids2table``. To launch jobs from within
-python, see ``bids2table.engine.launch``.
+python, see :func:``bids2table.engine.launch``.
 
 Typical usage::
 
@@ -10,7 +10,9 @@ Typical usage::
         collection_id=2022-12-18-1900 \
         dry_run=true
 
-See documentation for more examples.
+You can see the full usage by running ``bids2table -h``.
+
+See :class:`bids2table.config.Config` for all the available config options.
 """
 
 import argparse
