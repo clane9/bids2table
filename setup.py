@@ -7,12 +7,17 @@ README = (HERE / "README.md").read_text()
 
 INSTALL_REQUIRES = [
     "hydra-core",
-    "nibabel",
     "numpy",
     "pandas",
     "pyarrow",
     "tabulate",
     "pyyaml",
+]
+
+TEST_REQUIRES = [
+    "nibabel",
+    "pytest",
+    "pytest-cov",
 ]
 
 # NOTE: these dependencies also pinned in .pre-commit-config.yaml
@@ -23,13 +28,12 @@ DEV_REQUIRES = [
     "mypy==0.982",
     "pre-commit",
     "pylint>=2.5.0",
-    "pytest",
-    "pytest-cov",
     "types-tabulate",
     "types-PyYAML",
 ]
 
 EXTRAS_REQUIRE = {
+    "test": TEST_REQUIRES,
     "dev": DEV_REQUIRES,
 }
 
