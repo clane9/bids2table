@@ -1,3 +1,22 @@
+"""
+Logging utilities.
+
+Provides a ``ProcessedLog`` which handles writing, reading, and filtering logs of
+processed directories.
+
+.. code-block:: python
+
+    proc_log = ProcessedLog(db_dir)
+    success_mask = proc_log.success_mask(error_rate_threshold=0.1)
+    success_df = proc_log.df[success_mask, :]
+
+Also provides a ``setup_logging`` utility to configure the root ``logging`` logger.
+
+.. code-block:: python
+
+    setup_logging(cfg.worker_id, log_dir="log/", level="INFO")
+"""
+
 import json
 import logging
 import sys
@@ -125,36 +144,52 @@ class ProcessedLog:
         todo_df = todo_df.join(log_df, how="left")
 
         # If all paths are new, nothing to filter.
-        new_mask = todo_df["collection_id"].isna().values
-        if new_mask.sum() == len(paths):
+        new_mask = np.asarray(todo_df["collection_id"].isna())
+        if new_mask.all():
             return paths
 
         # Initialize the redo mask to be the full overlap. We'll filter out successfully
         # processed paths.
-        redo_mask = ~new_mask
+        redo_mask = np.asarray(~new_mask)
         maybe_redo_df = todo_df.loc[redo_mask, :]
+
+        # Only redo paths that previously failed.
+        success_mask = self._success_mask(maybe_redo_df)
+        redo_mask[redo_mask] = ~success_mask
+
+        # Construct final todo paths. Use indices to guarantee original order.
+        todo_mask = new_mask | redo_mask
+        todo_indices = todo_df.loc[todo_mask, "indices"].values
+        todo_indices.sort()
+        return paths[todo_indices]
+
+    def success_mask(self, error_rate_threshold: Optional[float] = None) -> np.ndarray:
+        """
+        Find successfully completed paths.
+        """
+        return self._success_mask(error_rate_threshold=error_rate_threshold)
+
+    def _success_mask(
+        self,
+        log_df: Optional[pd.DataFrame] = None,
+        error_rate_threshold: Optional[float] = None,
+    ) -> np.ndarray:
+
+        if log_df is None:
+            log_df = self.df
 
         # Find partitions that were successfully written out.
         success_mask = (
-            maybe_redo_df["partitions"]
-            .apply(partial(_all_exist, root=self.db_dir))
-            .values
+            log_df["partitions"].apply(partial(_all_exist, root=self.db_dir)).values
         )
 
         # And the paths that were processed without too many errors.
         if error_rate_threshold is not None:
             success_mask = success_mask & (
-                maybe_redo_df["error_rate"].values <= error_rate_threshold
+                log_df["error_rate"].values <= error_rate_threshold
             )
 
-        # Only redo paths that previously failed.
-        redo_mask[redo_mask] = ~success_mask
-
-        # Construct final todo paths. Use indices to guarantee original order.
-        todo_mask = new_mask | redo_mask
-        todo_df = todo_df.loc[todo_mask, :]
-        paths = paths[todo_df["indices"]]
-        return paths
+        return np.asarray(success_mask)
 
 
 def _all_exist(ps: List[str], root: Optional[StrOrPath] = None) -> bool:

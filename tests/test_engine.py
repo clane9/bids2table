@@ -36,6 +36,9 @@ def test_launch(config: Config):
         assert proc_log.df.shape == (4, 8)
         assert proc_log.df["error_rate"].max() == 0
 
+        success_mask = proc_log.success_mask(error_rate_threshold=0.0)
+        assert success_mask.all()
+
         # Try running again, with the same paths. Should process no paths
         config.collection_id = "test_run2"
         launch(config)

@@ -8,10 +8,11 @@ import yaml
 from bids2table.__main__ import _main
 
 DATA_DIR = Path(__file__).parent / "data"
+LOCAL_CONFIG = Path(__file__).parent / "config_local" / "mriqc_local.yaml"
 
 
-@pytest.fixture
-def args(tmp_path: Path) -> argparse.Namespace:
+@pytest.fixture(params=["mriqc", LOCAL_CONFIG])
+def args(request: pytest.FixtureRequest, tmp_path: Path) -> argparse.Namespace:
     yaml_overrides = [
         {"db_dir": str(tmp_path / "db")},  # `- key: value` override format
         f"log_dir={tmp_path / 'log'}",  # `- key=value` override format
@@ -25,7 +26,7 @@ def args(tmp_path: Path) -> argparse.Namespace:
     cli_overrides = ["collection_id=test_run", "dry_run=true"]
 
     args_ = argparse.Namespace(
-        config="mriqc",
+        config=request.param,
         print_only=False,
         overrides_yaml=str(yaml_overrides_path),
         overrides=cli_overrides,

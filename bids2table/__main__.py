@@ -1,3 +1,18 @@
+"""
+Main bids2table command-line entry point.
+
+Callable as ``python -m bids2table`` or ``bids2table``. To launch jobs from within
+python, see ``bids2table.engine.launch``.
+
+Typical usage::
+
+    bids2table -c mriqc -y overrides.yaml \
+        collection_id=2022-12-18-1900 \
+        dry_run=true
+
+See documentation for more examples.
+"""
+
 import argparse
 import json
 from pathlib import Path
@@ -56,20 +71,20 @@ def _main(args: Optional[argparse.Namespace] = None):
 
     # compose config
     config_path = Path(args.config)
-    config = config_path.stem
+    config_name = config_path.stem
     # config name relative to internal configs
     if str(config_path) == config_path.stem:
         with initialize_config_module(
             "bids2table.config", version_base="1.1", job_name="bids2table"
         ):
-            cfg = compose(config, overrides=overrides)
+            cfg = compose(config_name, overrides=overrides)
     # local config path
     else:
         config_dir = str(config_path.parent.absolute())
         with initialize_config_dir(
             config_dir, version_base="1.1", job_name="bids2table"
         ):
-            cfg = compose(config, overrides=overrides)
+            cfg = compose(config_name, overrides=overrides)
 
     if args.print_only:
         print(OmegaConf.to_yaml(cfg))
