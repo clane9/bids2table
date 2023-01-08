@@ -175,11 +175,11 @@ def setup_logging(
     Setup root logger.
     """
     worker_id_str = format_worker_id(worker_id)
-    FORMAT = (
+    fmt = (
         f"({worker_id_str}) [%(levelname)s %(asctime)s %(filename)s:%(lineno)4d]: "
         "%(message)s"
     )
-    formatter = logging.Formatter(FORMAT, datefmt="%y-%m-%d %H:%M:%S")
+    formatter = logging.Formatter(fmt, datefmt="%y-%m-%d %H:%M:%S")
 
     logger = logging.getLogger()
     logger.setLevel(level)

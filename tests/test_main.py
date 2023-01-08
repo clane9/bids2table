@@ -24,13 +24,13 @@ def args(tmp_path: Path) -> argparse.Namespace:
 
     cli_overrides = ["collection_id=test_run", "dry_run=true"]
 
-    args = argparse.Namespace(
+    args_ = argparse.Namespace(
         config="mriqc",
         print_only=False,
         overrides_yaml=str(yaml_overrides_path),
         overrides=cli_overrides,
     )
-    return args
+    return args_
 
 
 def test_main(args: argparse.Namespace):

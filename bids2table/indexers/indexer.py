@@ -27,8 +27,6 @@ class Indexer(Handler):
     It is implemented as a special kind of ``Handler`` with additional methods enabling
     it to access the broader directory context.
 
-    Importantly, all fields in an ``Indexer`` are required.
-
     Sub-classes must implement:
 
     - ``_load()``: generate the row "key" record for given path.

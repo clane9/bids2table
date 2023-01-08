@@ -28,8 +28,8 @@ BIDS_DTYPES: Dict[str, type] = {
     "float": float,
 }
 
-with locate_file("bids_entities.yaml", __package__) as path:
-    with open(path) as f:
+with locate_file("bids_entities.yaml", __package__) as p:
+    with open(p) as f:
         _BIDS_ENTITY_DEFAULTS = yaml.safe_load(f)
 
 

@@ -16,8 +16,8 @@ class BIDS2TableSearchPathPlugin(SearchPathPlugin):
         # Note that bids2table.config is outside of the plugin module.
         # There is no requirement for it to be packaged with the plugin, it just needs
         # be available in a package.
-        # Remember to verify the config is packaged properly (build sdist and look inside,
-        # and verify MANIFEST.in is correct).
+        # Remember to verify the config is packaged properly (build sdist and look
+        # inside, and verify MANIFEST.in is correct).
         search_path.append(
             provider="bids2table-searchpath-plugin", path="pkg://bids2table.config"
         )

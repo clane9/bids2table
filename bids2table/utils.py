@@ -305,7 +305,7 @@ def parse_size(size: str) -> int:
     }
     units_lower = {k.lower(): v for k, v in units.items()}
 
-    pattern = r"([0-9.\s]+)({units})".format(units="|".join(units_lower.keys()))
+    pattern = rf"([0-9.\s]+)({'|'.join(units_lower.keys())})"
     match = re.match(pattern, size, flags=re.IGNORECASE)
     if match is None:
         raise ValueError(

@@ -120,8 +120,8 @@ def _struct_from_string(alias: str) -> Optional[pa.DataType]:
                 raise ValueError
             name, item_alias = item[:split], item[(split + 1) :]
             fields.append((name.strip(), get_dtype(item_alias)))
-    except ValueError:
-        raise ValueError(f"Invalid struct alias {alias}")
+    except ValueError as exc:
+        raise ValueError(f"Invalid struct alias {alias}") from exc
     return pa.struct(fields)
 
 
