@@ -10,8 +10,8 @@ bids2table is a scalable data pipeline for transforming a structured directory o
 - [Installation](#installation)
 - [Getting started](#getting-started)
 - [Architecture](#architecture)
-- [Scope](#scope)
 - [What is Parquet?](#what-is-parquet)
+- [Scope](#scope)
 - [Contributing](#contributing)
 
 ## Installation
@@ -61,10 +61,6 @@ Full documentation is coming. In the meantime, the entry points for understandin
 
 The end result of the pipeline is one or more directories of Parquet files (`dset.b2t/`), which can be read transparently as a typical dataframe across many popular data science tools.
 
-## Scope
-
-bids2table is built primarily for the neuroimaging community. It supports common neuroimaging data formats and directory structures out of the box. However, it's designed with extensibility in mind. Support for new kinds of data can be easily added through lightweight APIs and a simple plugin system.
-
 ## What is Parquet?
 
 Parquet is an efficient and widely supported binary tabular format optimized for large-scale data analysis. Some of the key features of Parquet are:
@@ -83,26 +79,30 @@ Parquet is an efficient and widely supported binary tabular format optimized for
   - **Variable-length types**: string, binary "BLOBs".
   - **Nested types**: list, struct.
 
-  In addition, bids2table adds support for [several extension types](bids2table/extensions/)
+  In addition, bids2table adds support for [several extension types](https://arrow.apache.org/docs/python/extending_types.html#defining-extension-types-user-defined-types)
 
   - [**ndarray**](bids2table/extensions/ndarray.py): n-dimensional arrays.
   - [**pickle**](bids2table/extensions/pickle.py): arbitrary objects serialized with [pickle](https://docs.python.org/3/library/pickle.html).
 
 - It's broadly supported across the data science community:
 
-```python
-# pandas
-df = pd.read_parquet("table.parquet")
+  ```python
+  # pandas
+  df = pd.read_parquet("table.parquet")
 
-# Dask
-df = dask.dataframe.read_parquet("table.parquet")
+  # Dask
+  df = dask.dataframe.read_parquet("table.parquet")
 
-# Spark
-df = spark.read.parquet("table.parquet")
+  # Spark
+  df = spark.read.parquet("table.parquet")
 
-# DuckDB
-df = duckdb.from_parquet("table.parquet")
-```
+  # DuckDB
+  df = duckdb.from_parquet("table.parquet")
+  ```
+
+## Scope
+
+bids2table is built primarily for the neuroimaging community. It supports common neuroimaging data formats and directory structures out of the box. However, it's designed with extensibility in mind. Support for new kinds of data can be easily added through lightweight APIs and a simple plugin system.
 
 ## Contributing
 
