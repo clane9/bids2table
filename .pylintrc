@@ -93,6 +93,7 @@ disable=abstract-method,
         map-builtin-not-iterating,
         misplaced-comparison-constant,
         missing-function-docstring,
+        missing-module-docstring,  # added
         metaclass-assignment,
         next-method-called,
         next-method-defined,
