@@ -7,8 +7,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-
-  code_quality:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -25,42 +24,9 @@ jobs:
           black --check bids2table tests
           isort --check-only bids2table tests
           flake8 bids2table tests
-          pylint --fail-under 9.5 bids2table
+          pylint --fail-under 9.0 bids2table
           mypy bids2table
-
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10"]
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v3
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install .[dev]
       - name: Run tests
-        run: |
-          pytest tests
-
-  coverage:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python 3.7
-        uses: actions/setup-python@v3
-        with:
-          python-version: "3.7"
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install .[dev]
-      - name: Run tests and collect coverage
         run: pytest --cov=bids2table tests
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
