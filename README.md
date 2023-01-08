@@ -71,11 +71,11 @@ Parquet is an efficient and widely supported binary tabular format optimized for
 
 - Its column-oriented, compressible, splittable data layout are [ideal for efficient storage and retrieval](https://www.databricks.com/glossary/what-is-parquet).
 
-| Dataset | Size on Amazon S3 | Query Run Time | Data Scanned | Cost |
-|---|---|---|---|---|
-| Data stored as CSV files | 1 TB | 236 seconds | 1.15 TB | $5.75 |
-| Data stored in Apache Parquet Format | 130 GB | 6.78 seconds | 2.51 GB | $0.01 |
-| Savings | 87% less when using Parquet | 34x faster | 99% less data scanned | 99.7% savings |
+  | Dataset | Size on Amazon S3 | Query Run Time | Data Scanned | Cost |
+  |---|---|---|---|---|
+  | Data stored as CSV files | 1 TB | 236 seconds | 1.15 TB | $5.75 |
+  | Data stored in Apache Parquet Format | 130 GB | 6.78 seconds | 2.51 GB | $0.01 |
+  | Savings | 87% less when using Parquet | 34x faster | 99% less data scanned | 99.7% savings |
 
 - It has a [flexible type system](https://arrow.apache.org/docs/python/data.html) supporting primitive types as well as complex structured data:
 
