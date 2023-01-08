@@ -23,6 +23,7 @@ DEV_REQUIRES = [
     "pre-commit",
     "pylint>=2.5.0",
     "pytest",
+    "pytest-cov",
     "types-tabulate",
     "types-PyYAML",
 ]
