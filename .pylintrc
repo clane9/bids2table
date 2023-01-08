@@ -66,6 +66,7 @@ disable=abstract-method,
         coerce-method,
         delslice-method,
         div-method,
+        django-not-configured,  # added
         duplicate-code,
         eq-without-hash,
         execfile-builtin,
