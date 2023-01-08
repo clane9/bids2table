@@ -7,6 +7,7 @@ README = (HERE / "README.md").read_text()
 
 INSTALL_REQUIRES = [
     "hydra-core",
+    "nibabel",
     "numpy",
     "pandas",
     "pyarrow",
