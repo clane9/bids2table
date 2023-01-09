@@ -124,8 +124,8 @@ class ProcessedLog:
             "errors": [err.to_dict() for err in errors],
         }
         log_dir = self.db_dir / self.PREFIX / collection_id
-        if not log_dir.exists():
-            log_dir.mkdir(parents=True)
+        # race to make this directory
+        log_dir.mkdir(parents=True, exist_ok=True)
         json_path = log_dir / (format_worker_id(worker_id) + ".proc.json")
         with open(json_path, "a") as f:
             print(json.dumps(record), file=f)
