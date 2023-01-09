@@ -40,15 +40,15 @@ class PathsConfig:
 
 @dataclass
 class TableConfig:
-    # Table name
-    name: str
+    # Table name. Defaults to the table key in cfg.tables.
+    name: Optional[str] = None
 
     # Indexer config
-    indexer: IndexerConfig
+    indexer: IndexerConfig = MISSING
 
     # Handler configs, mapping arbitrary handler key to a handler config. The key is
     # only used to enable composition.
-    handlers: Dict[str, HandlerConfig]
+    handlers: Dict[str, HandlerConfig] = MISSING
 
 
 @dataclass
