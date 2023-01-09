@@ -10,7 +10,7 @@
 eval "$(conda shell.bash hook)"
 conda activate python39
 
-python -m bids2table -c config/openneuro_mriqc.yaml -y overrides.yaml \
+bids2table -c config/openneuro_mriqc.yaml -y overrides.yaml \
     collection_id=2022-12-18-1900 \
-    worker_id=$SLURM_ARRAY_TASK_ID \
+    worker_id="$SLURM_ARRAY_TASK_ID" \
     num_workers=20

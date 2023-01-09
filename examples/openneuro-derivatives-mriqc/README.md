@@ -68,14 +68,14 @@ Note we also include a command-line override `collection_id=2022-12-18-1900`. Co
 A reasonable convention for the `collection_id` is to use the output of `date '+%Y-%m-%d-%H%M'`. But any unique ID is fine.
 
 ```sh
-python -m bids2table -p -c config/openneuro_mriqc.yaml -y overrides.yaml \
+bids2table -p -c config/openneuro_mriqc.yaml -y overrides.yaml \
     collection_id=2022-12-18-1900
 ```
 
 Next we do a "dry run" that includes processing the first subject directory, but without saving any results.
 
 ```sh
-python -m bids2table -c config/openneuro_mriqc.yaml -y overrides.yaml \
+bids2table -c config/openneuro_mriqc.yaml -y overrides.yaml \
     collection_id=2022-12-18-1900 \
     dry_run=true
 ```
@@ -101,9 +101,9 @@ Here are the contents of our [sbatch](https://slurm.schedmd.com/sbatch.html) scr
 #SBATCH --time=00:05:00
 #SBATCH --array=0-19
 
-python -m bids2table -c config/openneuro_mriqc.yaml -y overrides.yaml \
+bids2table -c config/openneuro_mriqc.yaml -y overrides.yaml \
     collection_id=2022-12-18-1900 \
-    worker_id=$SLURM_ARRAY_TASK_ID \
+    worker_id="$SLURM_ARRAY_TASK_ID" \
     num_workers=20
 ```
 
