@@ -7,5 +7,7 @@ mriqc_func_bold:
   label: mriqc_func_bold
   loader:
     name: load_json_dict
-    kwargs: {"nested": False}
   example: mriqc_func_bold.json
+  fields:
+    bids_meta: pickle
+    provenance: pickle

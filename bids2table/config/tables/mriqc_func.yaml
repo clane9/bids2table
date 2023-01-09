@@ -1,7 +1,5 @@
 defaults:
+  - base_table@mriqc_func
   - indexer@mriqc_func.indexer: bids_func
   - handlers@mriqc_func.handlers:
     - mriqc_func_bold
-
-mriqc_func:
-  name: mriqc_func

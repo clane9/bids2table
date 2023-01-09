@@ -105,6 +105,8 @@ class Config:
 config_store = ConfigStore.instance()
 config_store.store(name="base", node=Config)
 
+config_store.store(name="base_table", node=TableConfig, group="tables")
+
 config_store.store(
     name="base_bids_indexer", node=BIDSIndexerConfig, group="tables/indexer"
 )

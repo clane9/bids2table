@@ -1,4 +1,13 @@
 defaults:
+  # Inherit from base table. Note that we nest all the table config under the
+  # key "mriqc_anat" to make composing the final tables dict config easier.
+  # The syntax is CONFIG@DEST
+  #
+  # TODO: this defaults list syntax is pretty complicated. Review the Hydra docs
+  # and see if we can concisely summarize the parts we need for people.
+  #
+  # See [here](https://hydra.cc/docs/1.1/advanced/defaults_list/)
+  - base_table@mriqc_anat
   # The syntax is SOURCE@DEST: CONFIG, where SOURCE is the config group relative to
   # the current config parent, DEST is the destination group in this config, and CONFIG
   # is the config yaml in the SOURCE group to insert.
@@ -7,6 +16,3 @@ defaults:
   - indexer@mriqc_anat.indexer: bids_anat
   - handlers@mriqc_anat.handlers:
     - mriqc_anat_T1w
-
-mriqc_anat:
-  name: mriqc_anat

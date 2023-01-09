@@ -307,8 +307,9 @@ def _initialize_tables(cfg: Config) -> Tuple[IndexersMap, HandlersMap]:
     indexers_map: IndexersMap = {}
     handlers_map: HandlersMap = defaultdict(list)
 
-    for table_cfg in cfg.tables.values():
-        name = table_cfg.name
+    for name, table_cfg in cfg.tables.items():
+        if table_cfg.name:
+            name = table_cfg.name
         logging.info("Initializing table %s", name)
 
         indexer_cfg = table_cfg.indexer

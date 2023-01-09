@@ -1,5 +1,4 @@
 defaults:
-  - _self_
   - base
   - tables:
     - mriqc_anat
