@@ -1,3 +1,4 @@
+# pylint: disable=redefined-outer-name
 import logging
 from pathlib import Path
 from typing import Tuple

@@ -1,3 +1,4 @@
+# pylint: disable=redefined-outer-name
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Type

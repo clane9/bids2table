@@ -1,3 +1,4 @@
+# pylint: disable=redefined-outer-name
 import logging
 from pathlib import Path
 from typing import List
@@ -66,21 +67,21 @@ def test_config_wrong_type(wrong_type_overrides: List[str]):
         _load_config(wrong_type_overrides)
 
 
-def _load_config(_overrides: List[str]) -> Config:
-    logging.info(f"overrides:\n{_overrides}")
+def _load_config(overrides_: List[str]) -> Config:
+    logging.info(f"overrides:\n{overrides_}")
     with initialize_config_module(
         "bids2table.config", version_base="1.2", job_name="bids2table"
     ):
-        cfg = compose(config_name="mriqc", overrides=_overrides)
+        cfg = compose(config_name="mriqc", overrides=overrides_)
     logging.info(f"config:\n{OmegaConf.to_yaml(cfg)}")
     # DictConfig duck-typed as a Config, ignore type error
     return cfg  # type: ignore
 
 
-def _load_local_config(_overrides: List[str]) -> Config:
-    logging.info(f"overrides:\n{_overrides}")
+def _load_local_config(overrides_: List[str]) -> Config:
+    logging.info(f"overrides:\n{overrides_}")
     with initialize("config_local", version_base="1.2", job_name="bids2table"):
-        cfg = compose(config_name="mriqc_local", overrides=_overrides)
+        cfg = compose(config_name="mriqc_local", overrides=overrides_)
     logging.info(f"config:\n{OmegaConf.to_yaml(cfg)}")
     return cfg  # type: ignore
 

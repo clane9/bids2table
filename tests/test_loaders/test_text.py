@@ -1,3 +1,4 @@
+# pylint: disable=redefined-outer-name
 import csv
 import json
 from pathlib import Path

@@ -1,3 +1,4 @@
+# pylint: disable=redefined-outer-name
 import argparse
 import logging
 from pathlib import Path

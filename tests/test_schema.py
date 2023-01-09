@@ -1,3 +1,4 @@
+# pylint: disable=redefined-outer-name
 import json
 from datetime import datetime
 from typing import Dict, Tuple
